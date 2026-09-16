@@ -1,0 +1,141 @@
+---
+---
+<section id="tab-general" class="tab-content space-y-6">
+  <div class="pb-4 border-b border-slate-800">
+    <h2 class="text-xl font-semibold text-white" data-i18n="settings.general.title">Préférences Générales</h2>
+    <p class="text-xs text-slate-400 mt-1" data-i18n="settings.general.subtitle">Personnalisez votre expérience visuelle et linguistique.</p>
+  </div>
+  
+  <div class="space-y-4">
+    <div class="flex items-center justify-between p-4 bg-[#111316] rounded-2xl border border-slate-800/80">
+      <div>
+        <p class="text-sm font-medium text-slate-200" data-i18n="settings.general.theme">Thème d'affichage</p>
+        <p class="text-xs text-slate-400 mt-0.5" data-i18n="settings.general.themeHint">Optimisé pour les longues sessions GDScript</p>
+      </div>
+      <select id="themeSelect" class="bg-slate-800 border border-slate-700 text-xs text-slate-200 rounded-xl px-4 py-2.5 focus:outline-none focus:border-cyan-500 cursor-pointer">
+        <option value="dark" data-i18n="theme.dark">Sombre (Godot Dark)</option>
+        <option value="light" data-i18n="theme.light">Clair</option>
+        <option value="system" data-i18n="theme.system">Système</option>
+      </select>
+    </div>
+
+    <div class="flex items-center justify-between p-4 bg-[#111316] rounded-2xl border border-slate-800/80">
+      <div>
+        <p class="text-sm font-medium text-slate-200" data-i18n="settings.general.language">Langue de l'interface</p>
+        <p class="text-xs text-slate-400 mt-0.5" data-i18n="settings.general.languageHint">Langue des menus et réponses de l'assistant</p>
+      </div>
+      <select id="langSelect" class="bg-slate-800 border border-slate-700 text-xs text-slate-200 rounded-xl px-4 py-2.5 focus:outline-none focus:border-cyan-500 cursor-pointer">
+        <option value="fr">Français</option>
+        <option value="en">English (US)</option>
+      </select>
+    </div>
+
+    <div class="flex items-center justify-between p-4 bg-[#111316] rounded-2xl border border-slate-800/80">
+      <div>
+        <p class="text-sm font-medium text-slate-200" data-i18n="settings.general.textSize">Taille du texte</p>
+        <p class="text-xs text-slate-400 mt-0.5" data-i18n="settings.general.textSizeHint">Ajuste le confort de lecture du chat</p>
+      </div>
+      <select id="fontSizeSelect" class="bg-slate-800 border border-slate-700 text-xs text-slate-200 rounded-xl px-4 py-2.5 focus:outline-none focus:border-cyan-500 cursor-pointer">
+        <option value="normal" data-i18n="size.normal">Normale</option>
+        <option value="large" data-i18n="size.large">Grande</option>
+      </select>
+    </div>
+
+    <label class="flex items-center justify-between p-4 bg-[#111316] rounded-2xl border border-slate-800/80 cursor-pointer">
+      <div>
+        <p class="text-sm font-medium text-slate-200" data-i18n="settings.general.density">Affichage compact</p>
+        <p class="text-xs text-slate-400 mt-0.5" data-i18n="settings.general.densityHint">Affiche davantage de messages à l'écran</p>
+      </div>
+      <input id="compactModeToggle" type="checkbox" class="h-4 w-4 accent-cyan-500 cursor-pointer" />
+    </label>
+
+    <!-- 🎯 Créativité de l'IA — réglage RÉEL (température envoyée aux modèles) -->
+    <div class="flex items-center justify-between p-4 bg-[#111316] rounded-2xl border border-slate-800/80">
+      <div>
+        <p class="text-sm font-medium text-slate-200">🎯 Créativité de l'IA</p>
+        <p class="text-xs text-slate-400 mt-0.5">Sobre = réponses strictes · Imaginative = idées et variantes. Appliqué instantanément.</p>
+      </div>
+      <select id="creativitySelect" class="bg-slate-800 border border-slate-700 text-xs text-slate-200 rounded-xl px-4 py-2.5 focus:outline-none focus:border-cyan-500 cursor-pointer">
+        <option value="0.2">🧊 Sobre</option>
+        <option value="0.7" selected>⚖️ Équilibrée</option>
+        <option value="1.0">🎨 Imaginative</option>
+      </select>
+    </div>
+    <!-- 🎨 Couleur d'accent — appliquée instantanément -->
+    <div class="flex items-center justify-between p-4 bg-[#111316] rounded-2xl border border-slate-800/80">
+      <div>
+        <p class="text-sm font-medium text-slate-200">🎨 Couleur d'accent</p>
+        <p class="text-xs text-slate-400 mt-0.5">Personnalise la teinte des chips, captures et éléments interactifs. Instantané.</p>
+      </div>
+      <select id="accentSelect" class="bg-slate-800 border border-slate-700 text-xs text-slate-200 rounded-xl px-4 py-2.5 focus:outline-none focus:border-cyan-500 cursor-pointer">
+        <option value="#89b4fa">🔵 Bleu (défaut)</option>
+        <option value="#a6e3a1">🟢 Vert</option>
+        <option value="#f5c2e7">🩷 Rose</option>
+        <option value="#f9e2af">🟡 Ambre</option>
+        <option value="#cba6f7">🟣 Violet</option>
+        <option value="#94e2d5">🩵 Turquoise</option>
+      </select>
+    </div>
+    <!-- 🔔 Son de fin de réponse — instantané -->
+    <label class="flex items-center justify-between p-4 bg-[#111316] rounded-2xl border border-slate-800/80 cursor-pointer">
+      <div>
+        <p class="text-sm font-medium text-slate-200">🔔 Son de fin de réponse</p>
+        <p class="text-xs text-slate-400 mt-0.5">Petit carillon quand l'IA a fini de générer. Instantané.</p>
+      </div>
+      <input id="soundToggle" type="checkbox" class="h-4 w-4 accent-cyan-500 cursor-pointer" checked />
+    </label>
+
+    <!-- 🧹 Zone danger -->
+    <div class="flex items-center justify-between p-4 bg-red-950/20 rounded-2xl border border-red-500/30">
+      <div>
+        <p class="text-sm font-medium text-red-300">🧹 Effacer les données locales</p>
+        <p class="text-xs text-red-300/70 mt-0.5">Supprime préférences, mémoire projet et stats de ce navigateur. Les conversations cloud sont conservées.</p>
+      </div>
+      <button id="clearLocalDataBtn" type="button" class="bg-red-500/20 hover:bg-red-500/40 border border-red-500/40 text-xs text-red-200 px-4 py-2.5 rounded-xl transition cursor-pointer font-medium">Effacer</button>
+    </div>
+  </div>
+</section>
+
+<script>
+  // 🎯 Créativité : appliquée INSTANTANÉMENT (localStorage gd4_creativity,
+  // relu par index.astro à CHAQUE appel IA → plus rien "pour le décor").
+  const creativitySelect = document.getElementById('creativitySelect') as HTMLSelectElement | null;
+  try {
+    const saved = localStorage.getItem('gd4_creativity');
+    if (saved && creativitySelect) creativitySelect.value = saved;
+  } catch { /* ignore */ }
+  creativitySelect?.addEventListener('change', () => {
+    try { localStorage.setItem('gd4_creativity', creativitySelect.value); } catch { /* ignore */ }
+  });
+
+  // 🎨 Couleur d'accent : appliquée INSTANTANÉMENT (var CSS --accent)
+  const accentSelect = document.getElementById('accentSelect') as HTMLSelectElement | null;
+  const applyAccent = (value: string) => {
+    try { document.documentElement.style.setProperty('--accent', value); } catch { /* ignore */ }
+  };
+  try {
+    const savedAccent = localStorage.getItem('gd4_accent');
+    if (savedAccent && accentSelect) accentSelect.value = savedAccent;
+    if (savedAccent) applyAccent(savedAccent);
+  } catch { /* ignore */ }
+  accentSelect?.addEventListener('change', () => {
+    try {
+      localStorage.setItem('gd4_accent', accentSelect.value);
+      applyAccent(accentSelect.value);
+    } catch { /* ignore */ }
+  });
+
+  // 🔔 Son de fin de réponse (gd4_sound_on, activé par défaut)
+  const soundToggle = document.getElementById('soundToggle') as HTMLInputElement | null;
+  try { if (soundToggle) soundToggle.checked = localStorage.getItem('gd4_sound_on') !== 'off'; } catch { /* ignore */ }
+  soundToggle?.addEventListener('change', () => {
+    try { localStorage.setItem('gd4_sound_on', soundToggle.checked ? 'on' : 'off'); } catch { /* ignore */ }
+  });
+
+  // 🧹 Effacer les données locales (zone danger — conversations cloud conservées)
+  document.getElementById('clearLocalDataBtn')?.addEventListener('click', () => {
+    if (!confirm('Effacer TOUTES les données locales (préférences, mémoire projet, stats, conversations non synchronisées) ?\n\nLes conversations synchronisées dans le cloud sont conservées.')) return;
+    try { localStorage.clear(); } catch { /* ignore */ }
+    window.location.reload();
+  });
+</script>

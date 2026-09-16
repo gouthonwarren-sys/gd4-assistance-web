@@ -1,0 +1,120 @@
+---
+---
+<section id="tab-ai" class="tab-content space-y-6 hidden">
+  <div class="pb-4 border-b border-slate-800">
+    <h2 class="text-xl font-semibold text-white">System Prompt & Directives</h2>
+    <p class="text-xs text-slate-400 mt-1">Instructions personnalisées transmises à l'IA lors des requêtes GDScript.</p>
+  </div>
+
+  <!-- 🔔 Statut TEMPS RÉEL : les directives sont réellement injectées -->
+  <div class="flex items-center justify-between p-4 bg-[#111316] rounded-2xl border border-slate-800/80">
+    <div>
+      <p class="text-sm font-medium text-slate-200">Activer les directives personnalisées</p>
+      <p class="text-xs text-slate-400 mt-0.5" id="customPromptStatus">Vérification…</p>
+    </div>
+    <input id="customPromptToggle" type="checkbox" class="h-4 w-4 accent-cyan-500 cursor-pointer" checked />
+  </div>
+
+  <div class="space-y-2">
+    <div class="flex items-center justify-between text-[11px] text-slate-500 px-1">
+      <span>✍️ Directives (sauvegarde automatique)</span>
+      <span id="customPromptCounter" class="font-mono">0 car. · ~0 tokens</span>
+    </div>
+    <textarea 
+      id="systemPromptTextarea" 
+      rows="8" 
+      placeholder="Exemple : Toujours privilégier GDScript 2.0 fortement typé static. Générer les commentaires au format Doxygen..." 
+      class="w-full bg-[#111316] border border-slate-800 text-xs text-slate-200 p-4 rounded-2xl focus:outline-none focus:border-cyan-500 resize-none font-mono leading-relaxed"
+    ></textarea>
+    <!-- ✨ Directives rapides : un clic ajoute la règle -->
+    <div class="flex flex-wrap gap-2 pt-1">
+      <button type="button" class="directive-chip" data-add="Toujours privilégier GDScript 2.0 fortement typé (static quand pertinent).">GDScript typé</button>
+      <button type="button" class="directive-chip" data-add="Commente le code au format Doxygen (## doc_comment).">Commentaires Doxygen</button>
+      <button type="button" class="directive-chip" data-add="Découpe les fonctionnalités en petites étapes et demande confirmation avant toute action destructrice.">Étapes + confirmation</button>
+      <button type="button" class="directive-chip" data-add="Réponds toujours en français.">Réponses en français</button>
+      <button type="button" class="directive-chip" data-add="Propose au moins une alternative plus simple si ta solution est complexe.">Alternatives simples</button>
+      <button id="resetDirectivesBtn" type="button" class="directive-chip" style="color:#fca5a5;border-color:rgba(239,68,68,.35)" title="Effacer toutes les directives">🧹 Réinitialiser</button>
+    </div>
+  </div>
+</section>
+
+<style>
+  .directive-chip {
+    display: inline-flex; align-items: center; gap: 4px;
+    padding: 5px 12px; border-radius: 9999px; font-size: 11px;
+    color: #cbd5e1; background: rgba(30, 41, 59, 0.5);
+    border: 1px solid rgba(51, 65, 85, 0.7); cursor: pointer; transition: .15s;
+  }
+  .directive-chip:hover { color: #fff; border-color: rgba(34, 211, 238, 0.6); }
+</style>
+
+<script>
+  import { resolveCurrentUser, getSystemPrompt, setSystemPrompt } from '../../lib/userData';
+
+  const promptArea = document.getElementById('systemPromptTextarea') as HTMLTextAreaElement | null;
+  const customToggle = document.getElementById('customPromptToggle') as HTMLInputElement | null;
+  const statusText = document.getElementById('customPromptStatus');
+  const counterEl = document.getElementById('customPromptCounter');
+
+  // 🔔 Statut temps réel : reflète ce que index.astro applique VRAIMENT
+  function paintStatus(): void {
+    const active = customToggle ? customToggle.checked : true;
+    if (statusText) {
+      statusText.textContent = active
+        ? '✅ Actives — injectées dans CHAQUE requête envoyée à l\'IA (tous modèles).'
+        : '⛔ Désactivées — le modèle utilise uniquement le comportement standard GD4.';
+    }
+  }
+
+  function paintCounter(): void {
+    const len = (promptArea?.value || '').length;
+    if (counterEl) counterEl.textContent = `${len} car. · ~${Math.ceil(len / 4)} tokens`;
+  }
+
+  // Activation mémorisée (gd4_custom_prompt_on) — lue par index.astro à chaque appel
+  try { if (customToggle) customToggle.checked = localStorage.getItem('gd4_custom_prompt_on') !== 'off'; } catch { /* ignore */ }
+  paintStatus();
+  customToggle?.addEventListener('change', () => {
+    try { localStorage.setItem('gd4_custom_prompt_on', customToggle.checked ? 'on' : 'off'); } catch { /* ignore */ }
+    paintStatus();
+  });
+
+  // Chargement du system prompt DU COMPTE (anonyme → ancienne clé globale)
+  (async () => {
+    const me = await resolveCurrentUser().catch(() => null);
+    const saved = getSystemPrompt(me?.id ?? null);
+    if (promptArea && saved) promptArea.value = saved;
+    paintCounter();
+  })();
+
+  // Sauvegarde automatique (debounce 500 ms) dans l'espace du compte + cloud
+  let saveTimer: ReturnType<typeof setTimeout> | undefined;
+  promptArea?.addEventListener('input', () => {
+    paintCounter();
+    clearTimeout(saveTimer);
+    saveTimer = setTimeout(async () => {
+      const me = await resolveCurrentUser().catch(() => null);
+      await setSystemPrompt(promptArea.value, me?.id ?? null);
+    }, 500);
+  });
+
+  // ✨ Chips de directives rapides (AJOUT au texte existant, jamais d'écrasement)
+  document.querySelectorAll<HTMLButtonElement>('.directive-chip[data-add]').forEach((chip) => {
+    chip.addEventListener('click', () => {
+      if (!promptArea) return;
+      const add = chip.dataset.add || '';
+      promptArea.value = promptArea.value ? promptArea.value.replace(/\s*$/, '') + '\n' + add : add;
+      promptArea.dispatchEvent(new Event('input'));
+      promptArea.focus();
+    });
+  });
+
+  // 🧹 Réinitialisation complète des directives
+  document.getElementById('resetDirectivesBtn')?.addEventListener('click', async () => {
+    if (!confirm('Effacer toutes tes directives personnalisées ?')) return;
+    if (promptArea) promptArea.value = '';
+    paintCounter();
+    const me = await resolveCurrentUser().catch(() => null);
+    await setSystemPrompt('', me?.id ?? null);
+  });
+</script>

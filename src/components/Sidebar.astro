@@ -1,0 +1,343 @@
+---
+---
+<aside class="w-72 bg-[#121417] border-r border-slate-800/60 flex flex-col justify-between p-4 z-20 select-none h-screen shrink-0">
+  
+  <div class="space-y-6 flex-1 flex flex-col min-h-0">
+    <!-- Header App -->
+    <div class="flex items-center justify-between px-2 pt-1 shrink-0">
+      <div class="flex items-center gap-3">
+        <div class="w-8 h-8 rounded-xl bg-gradient-to-br from-cyan-500 to-blue-600 text-white font-black flex items-center justify-center text-sm shadow-md shadow-cyan-950/50">
+          GD4
+        </div>
+        <div>
+          <h1 class="font-semibold text-sm text-slate-100 tracking-wide">GD4 Assistant</h1>
+          <p class="text-[10px] text-slate-500 font-medium">Assistant IA Godot 4</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- Bouton Nouvelle Conversation -->
+    <button id="newChatBtn" type="button" class="w-full bg-slate-800/60 hover:bg-slate-800 border border-slate-700/50 hover:border-slate-600 text-slate-200 text-xs font-medium py-3 px-4 rounded-xl flex items-center gap-3 transition cursor-pointer shadow-sm shrink-0">
+      <svg class="w-4 h-4 text-cyan-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" />
+      </svg>
+      <span>Nouvelle conversation</span>
+    </button>
+
+    <!-- Liste dynamique des conversations -->
+    <div class="space-y-2 flex-1 flex flex-col min-h-0">
+      <span class="text-[11px] font-semibold text-slate-500 px-2 uppercase tracking-wider shrink-0">Historique</span>
+      <!-- 🔎 Recherche instantanée dans l'historique (nouveau) -->
+      <div class="relative shrink-0 px-1 pb-1">
+        <input id="chatSearchInput" type="text" placeholder="🔍 Rechercher une conversation…" class="w-full bg-[#16181c] border border-slate-800 text-[11px] text-slate-200 placeholder-slate-600 px-3 py-2 rounded-xl focus:outline-none focus:border-cyan-500/60 transition" />
+      </div>
+      <div id="chatsList" class="space-y-1 overflow-y-auto pr-1 text-xs flex-1">
+        <!-- Rempli dynamiquement par JS -->
+      </div>
+    </div>
+  </div>
+
+  <!-- Profil & Popover Footer -->
+  <div class="border-t border-slate-800/80 pt-3 relative shrink-0">
+    
+    <!-- Popover Menu Profil -->
+    <div id="userPopover" class="hidden absolute bottom-16 left-0 w-full bg-[#1b1e23] border border-slate-700/70 rounded-2xl shadow-2xl p-2 space-y-1 z-30 text-xs">
+      <button id="popoverOpenSettings" type="button" class="w-full text-left px-3 py-2.5 rounded-xl text-slate-200 hover:bg-slate-800 flex items-center gap-3 transition cursor-pointer">
+        <svg class="w-4 h-4 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
+        <span>Paramètres</span>
+      </button>
+      <button id="popoverOpenPricing" type="button" class="w-full text-left px-3 py-2.5 rounded-xl text-slate-200 hover:bg-slate-800 flex items-center gap-3 transition cursor-pointer">
+        <svg class="w-4 h-4 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
+        <span>Abonnement / Crédits</span>
+      </button>
+      <hr class="border-slate-800/80 my-1" />
+      <button id="sidebarLogoutBtn" type="button" class="w-full text-left px-3 py-2.5 rounded-xl text-red-400 hover:bg-red-500/10 flex items-center gap-3 transition cursor-pointer">
+        <svg class="w-4 h-4 text-red-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"/></svg>
+        <span>Se déconnecter</span>
+      </button>
+    </div>
+
+    <!-- Bouton Se connecter -->
+    <button 
+      id="sidebarLoginBtn" 
+      type="button"
+      class="w-full bg-cyan-600/20 hover:bg-cyan-600/30 text-cyan-400 border border-cyan-500/30 text-xs font-medium py-3 px-4 rounded-xl transition flex items-center justify-center gap-2 cursor-pointer shadow-sm"
+    >
+      <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 16l-4-4m0 0l4-4m-4 4h14m-5 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h7a3 3 0 013 3v1" />
+      </svg>
+      <span>Se connecter</span>
+    </button>
+
+    <!-- Profil Card -->
+    <div 
+      id="userMenuBtn" 
+      class="hidden flex items-center justify-between p-2.5 rounded-xl hover:bg-slate-800/60 cursor-pointer transition select-none"
+    >
+      <div class="flex items-center gap-3 overflow-hidden">
+        <div id="sidebarAvatarContainer" class="w-8 h-8 rounded-full bg-cyan-600 font-bold text-white flex items-center justify-center text-xs shrink-0 overflow-hidden">
+          <span id="sidebarAvatarText"></span>
+          <img id="sidebarAvatarImg" class="w-full h-full object-cover hidden" alt="Avatar" />
+        </div>
+        <div class="truncate">
+          <p id="sidebarUserName" class="text-xs font-semibold text-slate-200 truncate leading-tight"></p>
+          <p id="sidebarUserPlan" class="text-[10px] text-slate-500 truncate">Pro Plan</p>
+        </div>
+      </div>
+      <button id="directSettingsBtn" type="button" title="Paramètres" class="text-slate-400 hover:text-slate-200 p-1.5 rounded-lg hover:bg-slate-700/50 transition">
+        <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
+      </button>
+    </div>
+
+  </div>
+
+</aside>
+
+<script>
+  import { supabase } from '../lib/supabase';
+  import {
+    type Chat,
+    getUserFromCache,
+    getChats,
+    upsertChat,
+    removeChat,
+    getActiveChatId,
+    setActiveChatId,
+    syncAccountData,
+  } from '../lib/userData';
+
+  const AUTH_KEY = 'gd4_user_session';
+
+  // Compte courant déterminé dès le démarrage (null = visiteur anonyme)
+  let currentUserId: string | null = getUserFromCache()?.id ?? null;
+
+  const newChatBtn = document.getElementById('newChatBtn');
+  const chatsList = document.getElementById('chatsList');
+  const sidebarLoginBtn = document.getElementById('sidebarLoginBtn');
+  const userMenuBtn = document.getElementById('userMenuBtn');
+  const userPopover = document.getElementById('userPopover');
+  const popoverOpenSettings = document.getElementById('popoverOpenSettings');
+  const directSettingsBtn = document.getElementById('directSettingsBtn');
+  const sidebarLogoutBtn = document.getElementById('sidebarLogoutBtn');
+  const popoverOpenPricing = document.getElementById('popoverOpenPricing');
+
+  const sidebarUserName = document.getElementById('sidebarUserName');
+  const sidebarAvatarText = document.getElementById('sidebarAvatarText');
+  const sidebarAvatarImg = document.getElementById('sidebarAvatarImg') as HTMLImageElement | null;
+
+  // (Type Chat importé depuis lib/userData — messages + titre + updatedAt)
+
+  function renderChats() {
+    if (!chatsList) return;
+    // Historique strictement limité au compte courant (ou à l'espace anonyme)
+    const chats: Chat[] = getChats(currentUserId);
+    const activeId = getActiveChatId(currentUserId);
+
+    if (chats.length === 0) {
+      chatsList.innerHTML = `<p class="text-[11px] text-slate-600 px-2 italic">Aucune conversation</p>`;
+      return;
+    }
+
+    chatsList.innerHTML = '';
+
+    chats.forEach((chat) => {
+      const isActive = chat.id === activeId;
+      const chatItem = document.createElement('div');
+      chatItem.className = `group w-full flex items-center justify-between px-3 py-2 rounded-xl transition cursor-pointer ${
+        isActive 
+          ? 'bg-slate-800/90 text-cyan-300 font-medium border border-slate-700/60' 
+          : 'text-slate-400 hover:bg-slate-800/40 hover:text-slate-200'
+      }`;
+
+      chatItem.innerHTML = `
+        <button type="button" class="select-chat-btn flex items-center gap-2.5 min-w-0 flex-1 text-left bg-transparent border-0 p-0 cursor-pointer">
+          <svg class="w-4 h-4 ${isActive ? 'text-cyan-400' : 'text-slate-500'} shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z"/>
+          </svg>
+          <span class="truncate chat-title-text">${chat.title}</span>
+        </button>
+
+        <div class="hidden group-hover:flex items-center gap-1 shrink-0">
+          <button type="button" class="rename-chat-btn hover:text-cyan-400 p-1 rounded hover:bg-slate-700/50 transition" title="Renommer">
+            <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/>
+            </svg>
+          </button>
+          <button type="button" class="plugin-chat-btn hover:text-emerald-400 p-1 rounded hover:bg-slate-700/50 transition" title="Ouvrir dans le plugin Godot">
+            <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/>
+            </svg>
+          </button>
+          <button type="button" class="delete-chat-btn hover:text-red-400 p-1 rounded hover:bg-slate-700/50 transition" title="Supprimer">
+            <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/>
+            </svg>
+          </button>
+        </div>
+      `;
+
+      // Clic sur la conversation
+      chatItem.querySelector('.select-chat-btn')?.addEventListener('click', () => {
+        setActiveChatId(chat.id, currentUserId);
+        renderChats();
+        window.dispatchEvent(new CustomEvent('select-chat', { detail: { id: chat.id } }));
+      });
+
+      // Renommer la conversation (local + cloud du compte)
+      chatItem.querySelector('.rename-chat-btn')?.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const newTitle = prompt('Nouveau nom de la conversation :', chat.title);
+        if (newTitle && newTitle.trim()) {
+          const target = getChats(currentUserId).find((c) => c.id === chat.id);
+          if (target) void upsertChat({ ...target, title: newTitle.trim() }, currentUserId);
+          else renderChats();
+        }
+      });
+
+      // 🎮 Ouvrir la conversation dans le plugin Godot (dock)
+      chatItem.querySelector('.plugin-chat-btn')?.addEventListener('click', (e) => {
+        e.stopPropagation();
+        window.dispatchEvent(new CustomEvent('open-in-plugin', { detail: { id: chat.id } }));
+      });
+
+      // Supprimer la conversation (local + cloud du compte)
+      chatItem.querySelector('.delete-chat-btn')?.addEventListener('click', (e) => {
+        e.stopPropagation();
+        if (confirm(`Voulez-vous vraiment supprimer "${chat.title}" ?`)) {
+          if (getActiveChatId(currentUserId) === chat.id) {
+            setActiveChatId(null, currentUserId);
+            window.dispatchEvent(new CustomEvent('new-chat'));
+          }
+          void removeChat(chat.id, currentUserId);
+        }
+      });
+
+      chatsList.appendChild(chatItem);
+    });
+  }
+
+  // Écouter les événements globaux de mise à jour des conversations
+  window.addEventListener('chats-updated', () => renderChats());
+
+  // Bouton Nouvelle Conversation
+  newChatBtn?.addEventListener('click', () => {
+    setActiveChatId(null, currentUserId);
+    renderChats();
+    window.dispatchEvent(new CustomEvent('new-chat'));
+  });
+
+  popoverOpenPricing?.addEventListener('click', () => {
+    userPopover?.classList.add('hidden');
+    window.dispatchEvent(new CustomEvent('open-pricing'));
+  });
+
+  function openSettings(tabName = 'tab-general') {
+    userPopover?.classList.add('hidden');
+    window.dispatchEvent(new CustomEvent('open-settings', { detail: { tab: tabName } }));
+  }
+
+  sidebarLoginBtn?.addEventListener('click', () => openSettings('tab-account'));
+  popoverOpenSettings?.addEventListener('click', () => openSettings('tab-general'));
+  directSettingsBtn?.addEventListener('click', (e) => {
+    e.stopPropagation();
+    openSettings('tab-general');
+  });
+
+  userMenuBtn?.addEventListener('click', (e) => {
+    if ((e.target as HTMLElement).closest('#directSettingsBtn')) return;
+    e.stopPropagation();
+    userPopover?.classList.toggle('hidden');
+  });
+
+  document.addEventListener('click', () => userPopover?.classList.add('hidden'));
+
+  function updateSidebarProfile(userData: { name?: string; email: string; avatar_url?: string } | null) {
+    if (userData) {
+      const fullName = userData.name || userData.email.split('@')[0];
+      const initial = fullName.charAt(0).toUpperCase();
+
+      if (sidebarUserName) sidebarUserName.innerText = fullName;
+      
+      if (userData.avatar_url && sidebarAvatarImg) {
+        sidebarAvatarImg.src = userData.avatar_url;
+        sidebarAvatarImg.classList.remove('hidden');
+        sidebarAvatarText?.classList.add('hidden');
+      } else if (sidebarAvatarText) {
+        sidebarAvatarImg?.classList.add('hidden');
+        sidebarAvatarText.classList.remove('hidden');
+        sidebarAvatarText.innerText = initial;
+      }
+
+      sidebarLoginBtn?.classList.add('hidden');
+      userMenuBtn?.classList.remove('hidden');
+    } else {
+      userMenuBtn?.classList.add('hidden');
+      userPopover?.classList.add('hidden');
+      sidebarLoginBtn?.classList.remove('hidden');
+    }
+  }
+
+  if (supabase) {
+    supabase.auth.onAuthStateChange(async (event, session) => {
+      if (session?.user) {
+        const userInfo = {
+          email: session.user.email || '',
+          name: session.user.user_metadata?.full_name || session.user.user_metadata?.name || '',
+          avatar_url: session.user.user_metadata?.avatar_url || session.user.user_metadata?.picture || '',
+          id: session.user.id
+        };
+        localStorage.setItem(AUTH_KEY, JSON.stringify(userInfo));
+        updateSidebarProfile(userInfo);
+
+        // Connexion / session existante → rattache l'historique migré puis fusionne le cloud de CE compte
+        if (event === 'SIGNED_IN' || event === 'INITIAL_SESSION') {
+          currentUserId = session.user.id;
+          await syncAccountData(userInfo);              // dispatch 'chats-updated' à la fin
+          window.dispatchEvent(new CustomEvent('gd4-auth-changed', { detail: { user: userInfo } }));
+          renderChats();
+        }
+      } else {
+        localStorage.removeItem(AUTH_KEY);
+        updateSidebarProfile(null);
+        if (event === 'SIGNED_OUT') {
+          currentUserId = null;                          // retour à l'espace anonyme
+          window.dispatchEvent(new CustomEvent('gd4-auth-changed', { detail: { user: null } }));
+          renderChats();
+        }
+      }
+    });
+  } else {
+    const saved = localStorage.getItem(AUTH_KEY);
+    if (saved) {
+      try { updateSidebarProfile(JSON.parse(saved)); } catch { updateSidebarProfile(null); }
+    } else {
+      updateSidebarProfile(null);
+    }
+  }
+
+  sidebarLogoutBtn?.addEventListener('click', async () => {
+    if (supabase) {
+      await supabase.auth.signOut().catch(() => {});
+    }
+    setActiveChatId(null, currentUserId); // réinitialise la conversation active du compte qui se déconnecte
+    currentUserId = null;
+    localStorage.removeItem(AUTH_KEY);
+    updateSidebarProfile(null);
+    window.dispatchEvent(new CustomEvent('gd4-auth-changed', { detail: { user: null } }));
+    renderChats();
+  });
+
+  // 🔎 Recherche instantanée dans l'historique (nouveau GD4)
+  const chatSearchInput = document.getElementById('chatSearchInput') as HTMLInputElement | null;
+  const chatsListEl = document.getElementById('chatsList');
+  chatSearchInput?.addEventListener('input', () => {
+    const q = (chatSearchInput.value || '').trim().toLowerCase();
+    chatsListEl?.querySelectorAll<HTMLElement>(':scope > *').forEach((el) => {
+      const match = !q || (el.textContent || '').toLowerCase().includes(q);
+      el.style.display = match ? '' : 'none';
+    });
+  });
+
+  // Rendu initial de l'historique
+  renderChats();
+</script>

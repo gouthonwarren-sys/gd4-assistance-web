@@ -1,0 +1,35 @@
+# build output
+dist/
+.netlify/
+
+# generated types
+.astro/
+
+# dependencies
+node_modules/
+
+# logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# environment variables
+.env
+.env.production
+!.env.example
+
+# fichiers de travail local (checks, tests, temporaires)
+check_*.txt
+test_*.txt
+build_*.txt
+build_err.txt
+npm_*.txt
+_gd4_*
+
+# macOS-specific files
+.DS_Store
+
+# jetbrains setting folder
+.idea/

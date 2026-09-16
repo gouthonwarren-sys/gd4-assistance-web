@@ -1,0 +1,117 @@
+<header class="navbar">
+	<div class="nav-container">
+		<!-- Brand Logo -->
+		<a href="#" class="brand">
+			<span class="brand-badge">GD4</span>
+			<span class="brand-title">ASSISTANCE</span>
+		</a>
+
+		<!-- Liens de Navigation -->
+		<nav class="nav-links">
+			<a href="#demo">Démo</a>
+			<a href="#modeles">Modèles</a>
+			<a href="#tarifs">Tarifs</a>
+			<a href="#doc">Documentation</a>
+		</nav>
+
+		<!-- Actions -->
+		<div class="nav-actions">
+			<a href="/gd4_assistant_plugin.zip" download class="btn-secondary">
+				<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+				Plugin Godot
+			</a>
+			<a href="/GD4_Assistance_Setup.exe" download class="btn-primary">
+				Télécharger L'App
+			</a>
+			<button id="google-auth-btn" class="google-btn">
+				<span>Se connecter</span>
+			</button>
+		</div>
+	</div>
+</header>
+
+<style>
+	.navbar {
+		position: sticky;
+		top: 0;
+		z-index: 100;
+		background: rgba(14, 16, 20, 0.85);
+		backdrop-filter: blur(12px);
+		border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+		padding: 0.75rem 1.5rem;
+	}
+	.nav-container {
+		max-width: 1200px;
+		margin: 0 auto;
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+	}
+	.brand {
+		display: flex;
+		align-items: center;
+		gap: 8px;
+		text-decoration: none;
+	}
+	.brand-badge {
+		background: #478cbf;
+		color: #fff;
+		font-weight: 800;
+		font-size: 0.75rem;
+		padding: 2px 6px;
+		border-radius: 4px;
+	}
+	.brand-title {
+		font-weight: 700;
+		font-size: 1.05rem;
+		color: #ffffff;
+		letter-spacing: 0.5px;
+	}
+	.nav-links {
+		display: flex;
+		gap: 2rem;
+	}
+	.nav-links a {
+		color: #94a3b8;
+		text-decoration: none;
+		font-weight: 500;
+		font-size: 0.9rem;
+		transition: color 0.2s ease;
+	}
+	.nav-links a:hover { color: #ffffff; }
+	.nav-actions {
+		display: flex;
+		align-items: center;
+		gap: 0.75rem;
+	}
+	.btn-primary, .btn-secondary, .google-btn {
+		display: inline-flex;
+		align-items: center;
+		gap: 6px;
+		padding: 0.45rem 0.85rem;
+		border-radius: 6px;
+		font-size: 0.82rem;
+		font-weight: 600;
+		text-decoration: none;
+		transition: all 0.2s ease;
+		cursor: pointer;
+	}
+	.btn-primary {
+		background: #478cbf;
+		color: #ffffff;
+		border: 1px solid rgba(255, 255, 255, 0.1);
+	}
+	.btn-primary:hover { background: #3b77a4; transform: translateY(-1px); }
+	.btn-secondary {
+		background: rgba(255, 255, 255, 0.05);
+		color: #e2e8f0;
+		border: 1px solid rgba(255, 255, 255, 0.1);
+	}
+	.btn-secondary:hover { background: rgba(255, 255, 255, 0.1); }
+	.google-btn {
+		background: transparent;
+		color: #478cbf;
+		border: 1px solid #478cbf;
+	}
+	.google-btn:hover { background: rgba(71, 140, 191, 0.15); }
+</style>

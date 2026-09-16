@@ -1,0 +1,21 @@
+{
+  "name": "gd4-assistance-app",
+  "type": "module",
+  "version": "1.0.0",
+  "scripts": {
+    "dev": "astro dev --port 4321",
+    "build": "astro build",
+    "preview": "astro preview"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.111.0",
+    "@tailwindcss/vite": "^4.3.3",
+    "astro": "^7.1.6",
+    "tailwindcss": "^4.3.3"
+  },
+  "devDependencies": {
+    "@astrojs/netlify": "^8.2.5",
+    "electron": "^43.3.0",
+    "electron-builder": "^26.15.3"
+  }
+}

@@ -1,0 +1,148 @@
+@import "tailwindcss";
+
+:root[data-theme="light"] [class~="bg-[#0e1013]"],
+:root[data-theme="light"] [class~="bg-[#111316]"],
+:root[data-theme="light"] [class~="bg-[#121417]"],
+:root[data-theme="light"] [class~="bg-[#16181c]"],
+:root[data-theme="light"] [class~="bg-[#1b1e23]"] {
+	background-color: #f4f6f8 !important;
+}
+
+:root[data-theme="light"] [class~="bg-slate-800"],
+:root[data-theme="light"] [class~="bg-slate-800/60"],
+:root[data-theme="light"] [class~="bg-slate-800/90"] {
+	background-color: #e4e9ee !important;
+}
+
+:root[data-theme="light"] [class~="text-white"],
+:root[data-theme="light"] [class~="text-slate-100"],
+:root[data-theme="light"] [class~="text-slate-200"] {
+	color: #18212b !important;
+}
+
+:root[data-theme="light"] [class~="text-slate-300"],
+:root[data-theme="light"] [class~="text-slate-400"] {
+	color: #4d5c6b !important;
+}
+
+:root[data-theme="light"] [class~="border-slate-800"],
+:root[data-theme="light"] [class~="border-slate-800/80"],
+:root[data-theme="light"] [class~="border-slate-800/90"] {
+	border-color: #d5dce3 !important;
+}
+
+:root[data-font-size="large"] body { font-size: 112.5%; }
+:root[data-density="compact"] #chatContainer { padding: 1rem; }
+:root[data-density="compact"] #messagesList { gap: 0.5rem; }
+
+/* ---- Drag & Drop ---- */
+#chatContainer.drag-over {
+    background: rgba(137, 180, 250, 0.03);
+}
+#chatContainer.drag-over #messagesList {
+    border: 2px dashed var(--accent, #89b4fa);
+    background: rgba(137, 180, 250, 0.05);
+}
+.drop-hint {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    padding: 40px 30px;
+    border: 2px dashed var(--accent, #89b4fa);
+    border-radius: 16px;
+    background: rgba(137, 180, 250, 0.05);
+    color: var(--accent, #89b4fa);
+    font-size: 14px;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity .2s;
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    z-index: 50;
+    max-width: 300px;
+}
+#chatContainer.drag-over .drop-hint {
+    opacity: 1;
+}
+.drop-hint svg {
+    width: 48px;
+    height: 48px;
+    opacity: 0.6;
+}
+
+/* ============================================================
+   ✨ NOUVEAUTÉS VISUELLES GD4 (chips, scrollbars, polish)
+   ============================================================ */
+
+/* ⚡ Chips de prompts rapides (welcome screen) */
+.quick-prompt-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 8px 14px;
+    border-radius: 9999px;
+    font-size: 11px;
+    font-weight: 500;
+    color: #cbd5e1;
+    background: linear-gradient(135deg, rgba(30, 41, 59, 0.6), rgba(22, 27, 34, 0.8));
+    border: 1px solid rgba(51, 65, 85, 0.7);
+    cursor: pointer;
+    transition: transform .15s ease, border-color .15s ease, color .15s ease, box-shadow .15s ease;
+}
+        .quick-prompt-chip:hover {
+    transform: translateY(-2px);
+    color: var(--accent, #fff);
+    border-color: var(--accent, rgba(34, 211, 238, 0.6));
+    box-shadow: 0 6px 20px -6px rgba(34, 211, 238, 0.35);
+}
+.quick-prompt-chip:active {
+    transform: translateY(0);
+}
+
+/* 🎨 Scrollbars custom (app complète) */
+*::-webkit-scrollbar { width: 8px; height: 8px; }
+*::-webkit-scrollbar-track { background: transparent; }
+*::-webkit-scrollbar-thumb {
+    background: rgba(71, 85, 105, 0.5);
+    border-radius: 8px;
+}
+*::-webkit-scrollbar-thumb:hover { background: rgba(100, 116, 139, 0.8); }
+
+/* 🌟 Titre d'accueil — dégradé animé */
+#welcomeTitle span {
+    background: linear-gradient(90deg, #22d3ee, #818cf8, #22d3ee);
+    background-size: 200% auto;
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+    animation: gd4-shine 6s linear infinite;
+}
+@keyframes gd4-shine {
+    to { background-position: 200% center; }
+}
+
+/* 📜 Blocs de message — coins doux + hover discret */
+#messagesList > div {
+    transition: border-color .2s ease, box-shadow .2s ease;
+}
+#messagesList > div:hover {
+    border-color: rgba(51, 65, 85, 0.9);
+}
+
+/* 🔵 Barre d'envoi — halo lumineux au focus */
+#chatForm:focus-within {
+    box-shadow: 0 0 0 1px rgba(34, 211, 238, 0.25), 0 12px 40px -12px rgba(34, 211, 238, 0.25);
+}
+
+/* 🟢 Pastille Godot connectée — pulsation douce */
+#godotDot.bg-emerald-500 {
+    animation: gd4-pulse 2s ease-in-out infinite;
+}
+@keyframes gd4-pulse {
+    0%, 100% { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.5); }
+    50% { box-shadow: 0 0 0 5px rgba(16, 185, 129, 0); }
+}

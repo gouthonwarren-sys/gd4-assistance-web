@@ -1,0 +1,34 @@
+---
+import PricingSection from './PricingSection.astro';
+---
+
+<div id="pricingModal" class="hidden fixed inset-0 bg-black/80 backdrop-blur-md z-50 flex items-center justify-center p-4 md:p-8 animate-fade-in">
+  <div class="bg-[#0e1013] border border-slate-700/60 w-full max-w-6xl max-h-[90vh] rounded-3xl shadow-2xl flex flex-col overflow-hidden relative">
+    
+    <!-- Croix de fermeture -->
+    <button id="closePricingModalCross" type="button" class="absolute top-5 right-5 text-slate-400 hover:text-white bg-slate-800/60 hover:bg-slate-700 w-9 h-9 rounded-full flex items-center justify-center transition z-10 cursor-pointer">
+      <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+      </svg>
+    </button>
+
+    <!-- Contenu défilant avec les tarifs -->
+    <div class="p-4 md:p-8 overflow-y-auto">
+      <PricingSection />
+    </div>
+  </div>
+</div>
+
+<script>
+  const modal = document.getElementById('pricingModal');
+  const closeCross = document.getElementById('closePricingModalCross');
+
+  const closeModal = () => modal?.classList.add('hidden');
+
+  closeCross?.addEventListener('click', closeModal);
+
+  // Écouteur global pour ouvrir la modal des abonnements
+  window.addEventListener('open-pricing', () => {
+    modal?.classList.remove('hidden');
+  });
+</script>

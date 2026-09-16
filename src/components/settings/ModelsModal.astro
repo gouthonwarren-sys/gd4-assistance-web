@@ -1,0 +1,184 @@
+---
+---
+
+<section class="models-section" id="modeles">
+	<div class="container">
+		<h2>Modèles de Langage Intégrés</h2>
+		<p class="subtitle">GD4 Assistant intègre trois modèles spécialisés. Plutôt que de reposer sur un modèle unique généraliste, le système route automatiquement vos requêtes vers l'agent le plus adapté selon la nature du travail (autocomplétion en direct, débogage lourd ou calculs mathématiques/shaders).</p>
+
+		<div class="models-grid">
+			<!-- Sprint 4.7 -->
+			<div class="model-card">
+				<div class="model-header">
+					<span class="icon">⚡</span>
+					<h3>Sprint 4.7</h3>
+				</div>
+				<span class="engine-tag">GLM 4.7 Flash</span>
+				<div class="desc">
+					<p>Le modèle Sprint 4.7 est optimisé pour la vitesse absolue. Conçu pour s'intégrer directement dans le flux de frappe du développeur, il fournit une autocomplétion syntaxique instantanée et des suggestions de lignes en temps réel sans ralentir l'éditeur.</p>
+					<ul class="sub-list">
+						<li><strong>Architecture source :</strong> GLM 4.7 Flash</li>
+						<li><strong>Domaine principal :</strong> GDScript (syntaxe 4.x), autocomplétion inline, déclarations de variables et typage statique.</li>
+					</ul>
+				</div>
+				<ul class="specs">
+					<li><strong>Cas d'usage :</strong> Complétion automatique de fonctions (_ready(), _process(), _physics_process()), typage statique instantané (@export, Signal, static typing GDScript) et correction à la volée des fautes de frappe syntaxiques.</li>
+					<li><strong>Vitesse :</strong> Instantanée</li>
+				</ul>
+			</div>
+
+			<!-- Core 4.7 -->
+			<div class="model-card active">
+				<div class="badge">Recommandé</div>
+				<div class="model-header">
+					<span class="icon">🧠</span>
+					<h3>Core 4.7</h3>
+				</div>
+				<span class="engine-tag">DeepSeek V2 Coder 236B</span>
+				<div class="desc">
+					<p>Le modèle Core 4.7 constitue le cœur logique de GD4 Assistant. Capable de comprendre l'architecture globale d'un projet, l'arborescence des scènes Godot (.tscn) et les dépendances entre scripts, il excelle dans la résolution de bugs complexes et la refactorisation de code.</p>
+					<ul class="sub-list">
+						<li><strong>Architecture source :</strong> DeepSeek V2 Coder (236B)</li>
+						<li><strong>Domaine principal :</strong> Analyse d'arbres de scènes, refactorisation GDScript / C#, gestion d'état, architecture de signal.</li>
+					</ul>
+				</div>
+				<ul class="specs">
+					<li><strong>Cas d'usage :</strong> Analyse et résolution d'erreurs d'exécution (null reference, dépendances cycliques), gestion des états de jeu (State Machines) et conversion/refactorisation C# / GDScript.</li>
+					<li><strong>Vitesse :</strong> Équilibrée</li>
+				</ul>
+			</div>
+
+			<!-- Apex 4.7 -->
+			<div class="model-card">
+				<div class="model-header">
+					<span class="icon">🏔️</span>
+					<h3>Apex 4.7</h3>
+				</div>
+				<span class="engine-tag">GLM 5.2</span>
+				<div class="desc">
+					<p>Le modèle Apex 4.7 est le modèle haute performance dédié aux tâches les plus exigeantes visuellement et techniquement. Il est entraîné sur le langage de Shading natif de Godot (GLSL) et sur les mathématiques 3D avancées (quaternions, transformation de matrices, calculs de trajectoires et multithreading).</p>
+					<ul class="sub-list">
+						<li><strong>Architecture source :</strong> GLM 5.2</li>
+						<li><strong>Domaine principal :</strong> Shaders visual/code (spatial, canvas_item, particles), physique personnalisée, optimisation GPU.</li>
+					</ul>
+				</div>
+				<ul class="specs">
+					<li><strong>Cas d'usage :</strong> Rédaction et débogage de Shaders 2D/3D personnalisés, algorithmes de génération procédurale et optimisation des performances GPU via WorkerThreadPool.</li>
+					<li><strong>Vitesse :</strong> Priorité haute / maximale</li>
+				</ul>
+			</div>
+		</div>
+	</div>
+</section>
+
+<style>
+	.models-section {
+		padding: 4rem 1rem;
+		background-color: #16191d;
+		border-top: 1px solid #2d323b;
+	}
+	.container {
+		max-width: 1100px;
+		margin: 0 auto;
+	}
+	h2 {
+		color: #ffffff;
+		border-left: 4px solid #478cbf;
+		padding-left: 10px;
+		font-size: 2rem;
+		margin-bottom: 0.5rem;
+	}
+	.subtitle {
+		color: #a0a0a0;
+		margin-bottom: 2.5rem;
+	}
+	.models-grid {
+		display: grid;
+		grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+		gap: 1.5rem;
+	}
+	.model-card {
+		background: #20252b;
+		border: 1px solid #2d323b;
+		border-radius: 8px;
+		padding: 1.5rem;
+		position: relative;
+		transition: transform 0.2s ease, border-color 0.2s ease;
+		display: flex;
+		flex-direction: column;
+	}
+	.model-card:hover {
+		transform: translateY(-4px);
+		border-color: #478cbf;
+	}
+	.model-card.active {
+		border: 1.5px solid #478cbf;
+		background: linear-gradient(180deg, #20252b 0%, #1a232a 100%);
+	}
+	.badge {
+		position: absolute;
+		top: -12px;
+		right: 15px;
+		background: #478cbf;
+		color: #fff;
+		font-size: 0.75rem;
+		font-weight: bold;
+		padding: 3px 8px;
+		border-radius: 12px;
+		text-transform: uppercase;
+	}
+	.model-header {
+		display: flex;
+		align-items: center;
+		gap: 10px;
+		margin-bottom: 0.5rem;
+	}
+	.icon {
+		font-size: 1.5rem;
+	}
+	h3 {
+		color: #ffffff;
+		margin: 0;
+		font-size: 1.3rem;
+	}
+	.engine-tag {
+		display: inline-block;
+		align-self: flex-start;
+		background: rgba(71, 140, 191, 0.2);
+		color: #478cbf;
+		font-size: 0.8rem;
+		font-weight: bold;
+		padding: 2px 8px;
+		border-radius: 4px;
+		margin-bottom: 1rem;
+	}
+	.desc {
+		color: #cccccc;
+		font-size: 0.95rem;
+		line-height: 1.5;
+		flex-grow: 1;
+	}
+	.sub-list {
+		list-style: none;
+		padding: 0;
+		margin: 0.8rem 0 0 0;
+	}
+	.sub-list li {
+		margin-bottom: 0.4rem;
+	}
+	.specs {
+		list-style: none;
+		padding: 0;
+		margin-top: 1.5rem;
+		border-top: 1px solid #2d323b;
+		padding-top: 1rem;
+		font-size: 0.85rem;
+		color: #a0a0a0;
+	}
+	.specs li {
+		margin-bottom: 0.5rem;
+	}
+	.specs strong {
+		color: #ffffff;
+	}
+</style>

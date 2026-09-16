@@ -1,0 +1,296 @@
+---
+---
+<section id="tab-godot" class="tab-content space-y-6 hidden">
+  <div class="pb-4 border-b border-slate-800">
+    <h2 class="text-xl font-semibold text-white">Plugin Godot 4</h2>
+    <p class="text-xs text-slate-400 mt-1">Génère un code d'appairage, donne-le à l'utilisateur : il le colle dans le dock du plugin sous Godot pour relier son éditeur à ton app.</p>
+  </div>
+
+  <div class="p-5 bg-[#111316] rounded-2xl border border-slate-800/80 space-y-4">
+    <div class="flex items-center justify-between">
+      <span class="text-xs font-semibold text-slate-400 uppercase tracking-wider">Code d'appairage du compte</span>
+      <span id="wsStatusBadge" class="flex items-center gap-2 text-xs text-amber-400 bg-amber-500/10 px-3 py-1 rounded-full border border-amber-500/20">
+        <span class="w-2 h-2 rounded-full bg-amber-400 animate-pulse"></span>
+        <span id="wsStatusText">Hors ligne (Attente Godot)</span>
+      </span>
+    </div>
+
+    <div class="flex items-center justify-between bg-[#16181c] p-4 rounded-xl border border-slate-800">
+      <span id="realPairingCode" class="font-mono text-2xl font-black text-cyan-400 tracking-wider">GD4-····</span>
+      <div class="flex gap-2">
+        <button id="regenerateCodeBtn" type="button" title="Créer un nouveau code" class="bg-slate-800 hover:bg-slate-700 border border-slate-700/80 text-xs p-2.5 rounded-xl text-slate-300 transition cursor-pointer">
+          🔄 Nouveau code
+        </button>
+        <button id="modalCopyCodeBtn" type="button" class="bg-slate-800 hover:bg-slate-700 border border-slate-700/80 text-xs px-4 py-2.5 rounded-xl text-slate-200 transition cursor-pointer font-medium">
+          Copier
+        </button>
+      </div>
+    </div>
+
+    <p id="syncHint" class="hidden text-xs text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 rounded-xl px-3 py-2">
+      ✅ App et relais utilisent le même code.
+    </p>
+
+    <p class="text-xs text-slate-500">
+      📋 Donne ce code à l'utilisateur. Dans Godot : dock <b>GD4 Assistant</b> → colle le code → <b>🔗 Connecter</b>.
+    </p>
+    <p class="text-[10px] text-slate-600">Code lié au compte : <span id="codeOwnerDisplay" class="text-slate-400">—</span></p>
+  </div>
+
+  <div class="flex items-center justify-between p-4 bg-[#111316] rounded-2xl border border-slate-800/80">
+    <div>
+      <p class="text-sm font-medium text-slate-200">Port du relais local</p>
+      <p class="text-xs text-slate-400 mt-0.5">Par défaut : ws://127.0.0.1:9091</p>
+    </div>
+    <input id="wsPortInput" type="number" value="9091" class="w-24 bg-slate-800 border border-slate-700 text-xs text-center text-slate-200 py-2.5 rounded-xl font-mono focus:outline-none focus:border-cyan-500" />
+  </div>
+</section>
+
+<script>
+  import { resolveCurrentUser, getSetting, storePairingCode } from '../../lib/userData';
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // UN SEUL CODE PARTOUT — app ET plugin doivent utiliser EXACTEMENT le même.
+  //
+  //  1. Clic « Nouveau code » : l'app génère GD4-XXXX (format du relais),
+  //     l'affiche IMMÉDIATEMENT, puis l'IMPOSE au relais via POST {pin} afin
+  //     qu'il l'adopte. Ensuite elle relit le relais : s'il en a choisi un
+  //     autre, c'est le relais qui gagne (maître) → l'app adopte le sien.
+  //  2. refreshHealth (4 s)  : si le relais répond, l'app adopte toujours
+  //     le code réel du relais (aucune dérive possible entre les deux).
+  //  3. Relais injoignable    : le code affiché est mémorisé + resynchronisé
+  //     dès que /health répond à nouveau (jamais « … »).
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  let currentCode: string | null = null;
+  let accountCode: string | null = null;
+  let healthLogged = false;
+  const deadEndpoints = new Set<string>();
+  const savedPort = getSetting(null, 'relayPort', 9091);
+  const portInput = document.getElementById('wsPortInput') as HTMLInputElement | null;
+  if (portInput && Number.isInteger(savedPort) && savedPort >= 1 && savedPort <= 65535) {
+    portInput.value = String(savedPort);
+  }
+
+  function sleep(ms: number) {
+    return new Promise((r) => setTimeout(r, ms));
+  }
+
+  // Même alphabet que le relais (sans 0/O/1/I) → format GD4-XXXX identique partout
+  const CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+  function generateLocalCode(): string {
+    const bytes = new Uint32Array(4);
+    crypto.getRandomValues(bytes);
+    let out = '';
+    for (let i = 0; i < 4; i++) out += CODE_ALPHABET[bytes[i] % CODE_ALPHABET.length];
+    return 'GD4-' + out;
+  }
+
+  function extractPin(data: any): string | null {
+    if (!data || typeof data !== 'object') return null;
+    for (const key of ['pin', 'code', 'pin_code', 'pairing_code', 'pairingCode']) {
+      const v = (data as any)[key];
+      if (typeof v === 'string' && v.trim()) return v.trim();
+      if (typeof v === 'number') return String(v);
+    }
+    for (const v of Object.values(data)) {
+      if (typeof v === 'string' && /GD4-.+/.test(v)) return v.trim();
+    }
+    return null;
+  }
+
+  function serverBase(): string {
+    const port = (document.getElementById('wsPortInput') as HTMLInputElement)?.value || '9091';
+    return `http://127.0.0.1:${port}`;
+  }
+
+  function setDisplayedCode(code: string, owner: string) {
+    if (code && code.trim()) currentCode = code.trim();
+    const codeDisplay = document.getElementById('realPairingCode');
+    const ownerDisplay = document.getElementById('codeOwnerDisplay');
+    if (codeDisplay) codeDisplay.innerText = currentCode || '';
+    if (ownerDisplay) ownerDisplay.innerText = owner || '—';
+  }
+
+  async function mirrorAccount(code: string) {
+    const me = await resolveCurrentUser().catch(() => null);
+    if (me && code !== accountCode) {
+      accountCode = code;
+      void storePairingCode(me.id, me.email || '', code);
+    }
+  }
+
+  // ✅ CORRIGÉ : ajout de /pairing-code en tête de liste
+  async function readRelayPin(): Promise<string | null> {
+    const base = serverBase();
+    for (const ep of ['/pairing-code', '/health', '/pin', '/status', '/api/health', '/pairing']) {
+      if (deadEndpoints.has(ep)) continue;
+      try {
+        const res = await fetch(`${base}${ep}`);
+        if (!res.ok) { deadEndpoints.add(ep); continue; }
+        const data = await res.json().catch(() => null);
+        if (!healthLogged && data) {
+          healthLogged = true;
+          console.log(`[GD4] GET ${ep} →`, data);
+        }
+        const pin = extractPin(data);
+        if (pin) return pin;
+      } catch {
+        deadEndpoints.add(ep);
+      }
+    }
+    return null;
+  }
+
+  // ✅ CORRIGÉ : ajout de /pairing-code en tête de liste
+  async function imposePinToRelay(pin: string, email: string): Promise<string | null> {
+    const base = serverBase();
+    for (const ep of ['/pairing-code', '/regenerate-pin', '/api/regenerate-pin', '/regenerate', '/api/pin']) {
+      if (deadEndpoints.has(ep)) continue;
+      try {
+        const res = await fetch(`${base}${ep}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email, pin }),
+        });
+        if (!res.ok) { deadEndpoints.add(ep); continue; }
+        const data = await res.json().catch(() => null);
+        if (!healthLogged && data) {
+          healthLogged = true;
+          console.log(`[GD4] POST ${ep} →`, data);
+        }
+        const relayPin = extractPin(data);
+        return relayPin || pin;
+      } catch {
+        deadEndpoints.add(ep);
+      }
+    }
+    return null;
+  }
+
+  async function refreshHealth() {
+    const badge = document.getElementById('wsStatusBadge');
+    const statusText = document.getElementById('wsStatusText');
+    const hint = document.getElementById('syncHint');
+    const me = await resolveCurrentUser().catch(() => null);
+    const owner = me?.email || '—';
+
+    let relayPin: string | null = null;
+    let badgeState: 'connected' | 'waiting' | 'down' = 'down';
+
+    try {
+      const res = await fetch(`${serverBase()}/health`);
+      const data = await res.json().catch(() => null);
+      badgeState = data?.godot_connected ? 'connected' : (res.ok ? 'waiting' : 'down');
+      relayPin = data ? extractPin(data) : null;
+      if (!relayPin) relayPin = await readRelayPin();
+    } catch {
+      relayPin = await readRelayPin();
+    }
+
+    if (badge && statusText) {
+      if (badgeState === 'connected') {
+        badge.className = "flex items-center gap-2 text-xs text-emerald-400 bg-emerald-500/10 px-3 py-1 rounded-full border border-emerald-500/20";
+        statusText.innerText = 'Connecté à Godot 4';
+      } else if (badgeState === 'waiting') {
+        badge.className = "flex items-center gap-2 text-xs text-amber-400 bg-amber-500/10 px-3 py-1 rounded-full border border-amber-500/20";
+        statusText.innerText = 'Hors ligne (Attente Godot)';
+      } else {
+        badge.className = "flex items-center gap-2 text-xs text-red-400 bg-red-500/10 px-3 py-1 rounded-full border border-red-500/20";
+        statusText.innerText = 'Relais local injoignable (9091)';
+      }
+    }
+
+    if (relayPin) {
+      if (relayPin !== currentCode) console.log('[GD4] Code du relais adopté :', relayPin);
+      setDisplayedCode(relayPin, owner);
+      await mirrorAccount(relayPin);
+    }
+    else if (!currentCode) {
+      const local = generateLocalCode();
+      setDisplayedCode(local, owner);
+      await mirrorAccount(local);
+      void imposePinToRelay(local, me?.email || 'local');
+    }
+
+    if (hint) hint.classList.toggle('hidden', !(relayPin && relayPin === currentCode));
+  }
+
+  document.getElementById('regenerateCodeBtn')?.addEventListener('click', async () => {
+    const btn = document.getElementById('regenerateCodeBtn') as HTMLButtonElement | null;
+    const setBtn = (label: string, revertMs?: number) => {
+      if (!btn) return;
+      btn.innerText = label;
+      if (revertMs) setTimeout(() => { btn.innerText = '🔄 Nouveau code'; }, revertMs);
+    };
+
+    const me = await resolveCurrentUser().catch(() => null);
+    const owner = me?.email || '—';
+    setBtn('⏳ Génération…');
+
+    const newPin = generateLocalCode();
+    setDisplayedCode(newPin, owner);
+
+    const relayReply = await imposePinToRelay(newPin, me?.email || 'local');
+    await mirrorAccount(newPin);
+
+    await sleep(400);
+    const now = await readRelayPin();
+    if (now && now !== currentCode) {
+      console.log('[GD4] Le relais garde son code :', now, '→ adopté par l\'app');
+      setDisplayedCode(now, owner);
+      await mirrorAccount(now);
+    }
+
+    setBtn(relayReply || now ? '✅ Nouveau code !' : '⚠️ Relais éteint — code local', 2200);
+  });
+
+  document.getElementById('modalCopyCodeBtn')?.addEventListener('click', async () => {
+    const btn = document.getElementById('modalCopyCodeBtn') as HTMLButtonElement | null;
+    const code = currentCode || document.getElementById('realPairingCode')?.innerText || '';
+    let ok = false;
+    try {
+      await navigator.clipboard.writeText(code);
+      ok = true;
+    } catch {
+      try {
+        const ta = document.createElement('textarea');
+        ta.value = code;
+        ta.style.position = 'fixed';
+        ta.style.opacity = '0';
+        document.body.appendChild(ta);
+        ta.select();
+        ok = document.execCommand('copy');
+        ta.remove();
+      } catch { ok = false; }
+    }
+    if (btn) {
+      btn.innerText = ok ? 'Copié !' : 'Erreur';
+      setTimeout(() => { btn.innerText = 'Copier'; }, 2000);
+    }
+  });
+
+  document.getElementById('wsPortInput')?.addEventListener('change', () => {
+    // ⚙️ Le port modifié est mémorisé + poussé à l'app (reconnexion immédiate)
+    try {
+      const portField = document.getElementById('wsPortInput') as HTMLInputElement | null;
+      const portVal = Number(portField?.value);
+      if (Number.isInteger(portVal) && portVal >= 1 && portVal <= 65535) {
+        localStorage.setItem('gd4_relay_port', String(portVal));
+        window.dispatchEvent(new CustomEvent('gd4-relay-port-changed'));
+      }
+    } catch { /* ignore */ }
+    deadEndpoints.clear();
+    refreshHealth();
+  });
+
+  // ⚙️ Port mémorisé (Paramètres → localStorage) — plus de valeur en dur
+  try {
+    const savedPort = localStorage.getItem('gd4_relay_port');
+    const portField = document.getElementById('wsPortInput') as HTMLInputElement | null;
+    if (savedPort && portField) portField.value = savedPort;
+  } catch { /* ignore */ }
+
+  refreshHealth();
+  setInterval(refreshHealth, 4000);
+</script>

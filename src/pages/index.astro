@@ -1,0 +1,1845 @@
+---
+import Sidebar from '../components/Sidebar.astro';
+import SettingsModal from '../components/SettingsModal.astro';
+import PricingModal from '../components/PricingModal.astro';
+
+// ⚡ GROQ — cerveau principal : Qwen 3.8 27B (texte + vision) via l'API
+// compatible OpenAI de Groq (https://console.groq.com).
+// 🟢 NVIDIA NIM (DeepSeek V4 Flash) et ☁️ Cloudflare Workers AI restent
+// disponibles comme secours (options du sélecteur de modèle).
+//
+// 🔐 SÉCURITÉ (mise en ligne publique) : les CLÉS ne quittent JAMAIS le
+// serveur — elles vivent dans .env et ne sont utilisées que par les proxies
+// /api/groq, /api/nvidia et /api/cloudflare. Le navigateur ne reçoit ici que
+// des booléens "prêt / pas prêt" pour afficher les bons messages d'erreur :
+// aucune clé ne doit apparaître dans le HTML (inspecteur → body → data-*).
+const groqReady = Boolean(import.meta.env.PUBLIC_GROQ_API_KEY);
+const groqModel = import.meta.env.PUBLIC_GROQ_MODEL || 'qwen/qwen3.8-27b';
+const nvidiaReady = Boolean(import.meta.env.PUBLIC_NVIDIA_API_KEY);
+const nvidiaModel = import.meta.env.PUBLIC_NVIDIA_MODEL || 'deepseek-ai/deepseek-v4-flash-0731';
+const cloudflareReady = Boolean(import.meta.env.PUBLIC_CLOUDFLARE_API_KEY && import.meta.env.PUBLIC_CLOUDFLARE_ACCOUNT_ID);
+const cloudflareModel = import.meta.env.PUBLIC_CLOUDFLARE_MODEL || '@cf/qwen/qwen3.8-27b';
+---
+
+<!DOCTYPE html>
+<html lang="fr" class="h-full bg-[#0e1013] text-slate-100 antialiased">
+  <head>
+    <meta charset="utf-8" />
+    <title>GD4 Assistant</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <style is:global>
+      @import "tailwindcss";
+    </style>
+  </head>
+  <body
+    class="h-full flex overflow-hidden bg-[#0e1013] text-slate-100 font-sans"
+    data-groq-ready={groqReady ? "true" : "false"}
+    data-groq-model={groqModel}
+    data-nvidia-ready={nvidiaReady ? "true" : "false"}
+    data-nvidia-model={nvidiaModel}
+    data-cloudflare-ready={cloudflareReady ? "true" : "false"}
+    data-cloudflare-model={cloudflareModel}
+  >
+
+    <!-- Sidebar -->
+    <Sidebar />
+
+    <!-- Zone principale -->
+    <main class="flex-1 flex flex-col h-full min-w-0 relative bg-[#0e1013] overflow-hidden">
+
+      <!-- Header minimaliste -->
+      <header class="h-16 px-8 flex items-center justify-between shrink-0 border-b border-slate-800/40 w-full">
+        <div class="flex items-center gap-2 bg-[#16181c] border border-slate-800 px-3 py-1.5 rounded-xl text-xs font-medium text-slate-300">
+          <svg class="w-4 h-4 text-cyan-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/>
+          </svg>
+          <select id="modelSelect" class="bg-transparent text-slate-200 outline-none cursor-pointer font-medium">
+            <option value="auto" class="bg-[#16181c]" selected data-i18n="model.auto">✨ Auto (Sélection Intelligente)</option>
+            <option value="groq" class="bg-[#16181c]">⚡ Qwen 3.8 27B</option>
+          </select>
+        </div>
+
+        <!-- Outils rapides : Export MD + Journal des actions (nouveautés GD4) -->
+        <div class="flex items-center gap-1 mr-2">
+          <button id="statsBtn" type="button" title="Statistiques d'usage du jour" class="text-slate-400 hover:text-emerald-300 bg-slate-800/50 hover:bg-slate-800 border border-slate-700/50 px-2 py-1.5 rounded-lg text-[10px] font-medium transition cursor-pointer">📊</button>
+          <button id="exportAllBtn" type="button" title="Exporter TOUTES les conversations en un seul Markdown" class="text-slate-400 hover:text-cyan-300 bg-slate-800/50 hover:bg-slate-800 border border-slate-700/50 px-2 py-1.5 rounded-lg text-[10px] font-medium transition cursor-pointer">📦</button>
+          <button id="exportMdBtn" type="button" title="Exporter la conversation en Markdown" class="text-slate-400 hover:text-cyan-300 bg-slate-800/50 hover:bg-slate-800 border border-slate-700/50 px-2 py-1.5 rounded-lg text-[10px] font-medium transition cursor-pointer">⬇️ MD</button>
+          <button id="actionLogBtn" type="button" title="Journal des actions appliquées dans Godot (mémoire du modèle)" class="text-slate-400 hover:text-violet-300 bg-slate-800/50 hover:bg-slate-800 border border-slate-700/50 px-2 py-1.5 rounded-lg text-[10px] font-medium transition cursor-pointer">📜 Journal</button>
+        </div>
+
+        <!-- Statut Godot + Quota -->
+        <div class="flex items-center gap-1.5 text-[10px] font-medium text-slate-500">
+          <span id="godotDot" class="w-2 h-2 rounded-full bg-rose-500"></span>
+          <span id="godotLabel" data-i18n="godot.offline">Godot : hors ligne</span>
+          <span id="quotaDisplay" class="ml-2 text-slate-600"></span>
+        </div>
+
+        <!-- Bouton Mettre à niveau -->
+        <button
+          id="upgradeHeaderBtn"
+          type="button"
+          class="flex items-center gap-2 text-xs font-semibold text-amber-300 bg-gradient-to-r from-amber-500/10 via-amber-500/20 to-amber-500/10 hover:from-amber-500/20 hover:to-amber-500/30 px-3.5 py-1.5 rounded-xl border border-amber-500/30 hover:border-amber-400/60 shadow-lg shadow-amber-950/20 transition-all cursor-pointer group"
+        >
+          <svg class="w-4 h-4 text-amber-400 group-hover:scale-110 transition-transform" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 3v4M3 5h4M6 17v4m-2-2h4m5-16l2.286 6.857L21 12l-5.714 2.143L13 21l-2.286-6.857L5 12l5.714-2.143L13 3z" />
+          </svg>
+          <span data-i18n="upgrade">Mettre à niveau</span>
+        </button>
+      </header>
+
+      <!-- Zone centrale de conversation -->
+      <div id="chatContainer" class="relative flex-1 flex flex-col items-center justify-center p-6 overflow-y-auto w-full">
+
+        <!-- Écran de bienvenue par défaut -->
+        <div id="welcomeView" class="max-w-xl space-y-3 mx-auto text-center">
+          <h2 id="welcomeTitle" class="text-3xl md:text-4xl font-extrabold text-white tracking-tight transition-all duration-300">
+            <span data-i18n="welcome.title">Bonjour, que voulez-vous savoir ?</span>
+          </h2>
+          <p class="text-xs md:text-sm text-slate-400 font-normal leading-relaxed">
+            <span data-i18n="welcome.subtitle">Demandez la génération d'un script GDScript, un refactoring de nœud 2D/3D ou une correction d'erreur en temps réel.</span>
+          </p>
+          <!-- ⚡ Prompts rapides Godot — un clic = question préremplie (exclusivité GD4) -->
+          <div id="quickPrompts" class="flex flex-wrap justify-center gap-2 pt-3">
+            <button type="button" class="quick-prompt-chip" data-prompt="Crée un joueur contrôlable en 2D (CharacterBody2D) avec déplacements ZQSD/flèches et saut, plus le script complet commenté.">🎮 Créer un joueur 2D</button>
+            <button type="button" class="quick-prompt-chip" data-prompt="Analyse mon projet et corrige les erreurs potentielles (scripts, nœuds, signaux) puis explique chaque correction.">🩺 Diagnostic du projet</button>
+            <button type="button" class="quick-prompt-chip" data-prompt="Ajoute un système d'inventaire simple (ramasser des objets, UI de compteur) adapté à mon projet actuel.">🎒 Système d'inventaire</button>
+            <button type="button" class="quick-prompt-chip" data-prompt="Crée un menu principal avec boutons Jouer / Options / Quitter et une transition fluide vers la scène de jeu.">🪟 Menu principal</button>
+            <button type="button" class="quick-prompt-chip" data-prompt="Optimise mon jeu : performances, nombre de nœuds, scripts lourds — propose des améliorations concrètes.">🚀 Optimisation</button>
+            <button type="button" class="quick-prompt-chip" data-prompt="Explique-moi l'architecture de mon projet actuel (scènes, scripts, signaux) comme si je reprenais le code pour la première fois.">📚 Explique l'architecture</button>
+          </div>
+        </div>
+
+        <!-- Drop hint (visible quand on drague une image) -->
+        <div id="dropHint" class="drop-hint hidden">
+          <svg class="opacity-60" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+          </svg>
+          <span class="font-medium">📁 Glisse une image ici</span>
+          <span class="text-xs opacity-70">PNG, JPG, WebP</span>
+        </div>
+
+        <!-- Liste des messages -->
+        <div id="messagesList" class="w-full max-w-3xl space-y-4 hidden text-left"></div>
+
+      </div>
+
+      <!-- Formulaire d'envoi -->
+      <footer class="p-6 w-full shrink-0 flex justify-center">
+        <div class="w-full max-w-3xl">
+          <form id="chatForm" class="bg-[#16181c] border border-slate-800/90 rounded-3xl p-3 shadow-2xl focus-within:border-cyan-500/60 transition space-y-2">
+            <textarea
+              id="promptInput"
+              rows="2"
+              placeholder="Comment puis-je vous aider avec Godot 4 aujourd'hui ?"
+              data-i18n-placeholder="chat.placeholder"
+              class="w-full bg-transparent text-sm text-slate-100 placeholder-slate-500 p-2 focus:outline-none resize-none font-sans"
+            ></textarea>
+
+            <div class="flex items-center justify-between pt-1 border-t border-slate-800/50 px-2">
+              <div class="flex items-center gap-2">
+                <div class="relative">
+                  <button type="button" id="attachmentMenuBtn" aria-expanded="false" aria-controls="attachmentMenu" class="text-slate-300 hover:text-white bg-slate-800/60 hover:bg-slate-700 px-2.5 py-1.5 rounded-full border border-slate-700/70 text-base leading-none transition cursor-pointer" title="Ajouter une image">+</button>
+                  <div id="attachmentMenu" class="hidden absolute bottom-10 left-0 z-20 min-w-48 p-1.5 rounded-xl border border-slate-700 bg-[#1b1e24] shadow-2xl">
+                    <button type="button" id="captureBtn" class="w-full text-left text-xs text-slate-300 hover:text-emerald-300 hover:bg-slate-800 px-3 py-2 rounded-lg transition cursor-pointer">
+                      📸 <span data-i18n="capture">Capture Godot</span>
+                    </button>
+                    <button type="button" id="attachImageBtn" class="w-full text-left text-xs text-slate-300 hover:text-cyan-300 hover:bg-slate-800 px-3 py-2 rounded-lg transition cursor-pointer">
+                      🖼️ <span>Joindre une image</span>
+                    </button>
+                  </div>
+                </div>
+                <button type="button" id="deepThinkToggle" class="text-xs text-slate-400 hover:text-cyan-400 bg-slate-800/50 hover:bg-slate-800 px-3 py-1.5 rounded-full border border-slate-700/50 flex items-center gap-1.5 transition cursor-pointer">
+                  <span class="w-1.5 h-1.5 rounded-full bg-cyan-400"></span>
+                  <span data-i18n="deepThink">Réflexion profonde</span>
+                </button>
+                <button type="button" id="memoryToggle" class="text-xs text-slate-400 hover:text-violet-400 bg-slate-800/50 hover:bg-slate-800 px-3 py-1.5 rounded-full border border-slate-700/50 flex items-center gap-1.5 transition cursor-pointer" title="Injecter la mémoire projet (résumé + journal des actions) dans chaque question">
+                  <span class="w-1.5 h-1.5 rounded-full bg-violet-400"></span>
+                  🧠 Contexte
+                </button>
+                <button type="button" id="voiceInputBtn" title="Dicter ta question (micro)" class="text-xs text-slate-400 hover:text-cyan-400 bg-slate-800/50 hover:bg-slate-800 px-3 py-1.5 rounded-full border border-slate-700/50 transition cursor-pointer">🎤</button>
+
+                <input id="attachImageInput" type="file" accept="image/*" class="hidden" />
+                <span id="attachBadge" class="hidden text-[10px] text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 px-2 py-1 rounded-full">📸 capture jointe</span>
+                <span id="promptCounter" class="text-[10px] text-slate-600 font-mono"></span>
+              </div>
+
+              <button type="submit" id="sendBtn" class="bg-cyan-600 hover:bg-cyan-500 text-white p-2.5 rounded-2xl transition cursor-pointer flex items-center justify-center">
+                <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14 5l7 7m0 0l-7 7m7-7H3" />
+                </svg>
+              </button>
+            </div>
+          </form>
+        </div>
+      </footer>
+
+    </main>
+
+    <SettingsModal />
+    <PricingModal />
+
+    <script>
+      import { supabase } from '../lib/supabase';
+      import {
+        type Chat,
+        type ChatMessage,
+        resolveCurrentUser,
+        getUserFromCache,
+        getChats,
+        upsertChat,
+        getActiveChatId,
+        setActiveChatId,
+        getQuota,
+        setQuota,
+        consumeTokenQuotaRemote,
+        fetchTokenQuotaRemote,
+        getSystemPrompt,
+      } from '../lib/userData';
+      import {
+        buildInjectedProjectContext,
+        recordProjectConversation,
+        recordProjectActions,
+        getProjectMemory,
+      } from '../lib/projectMemory';
+      import '../styles/global.css';
+
+      const runtimeConfig = document.body.dataset;
+      // Expose le client Supabase pour les composants (ex : code promo).
+      try { (window as any).supabase = supabase; } catch { /* ignore */ }
+      // ⚡ Groq (cerveau) + 🟢 NVIDIA (secours) + ☁️ Cloudflare (secours).
+      // 🔐 Les CLÉS restent côté serveur (.env → /api/groq, /api/nvidia,
+      // /api/cloudflare) : le navigateur ne reçoit que des booléens "prêt/pas prêt".
+      const groqReady = (runtimeConfig.groqReady || '') === 'true';
+      const groqModel = (runtimeConfig.groqModel || 'qwen/qwen3.8-27b').trim();
+      const nvidiaReady = (runtimeConfig.nvidiaReady || '') === 'true';
+      const nvidiaModel = (runtimeConfig.nvidiaModel || 'deepseek-ai/deepseek-v4-flash-0731').trim();
+      const cloudflareReady = (runtimeConfig.cloudflareReady || '') === 'true';
+      const cloudflareModel = (runtimeConfig.cloudflareModel || '@cf/qwen/qwen3.8-27b').trim();
+      try { console.log('[GD4] IA config — groqReady=' + groqReady + ' model=' + groqModel + ' | NVIDIA ready=' + nvidiaReady + ' | Cloudflare ready=' + cloudflareReady); } catch { /* ignore */ }
+
+      // ============================================================
+      // HARNAIS : force Gemini à répondre en JSON exécutable par Godot
+      // ============================================================
+      const GODOT_HARNESS = `Tu es GD4 Assistant, un expert Godot 4.x. Réponds UNIQUEMENT en JSON valide, sans markdown.
+Format OBLIGATOIRE :
+{"actions": [
+  {"type": "create_node", "parent": "Chemin/Parent", "node_type": "CharacterBody2D", "name": "Player"},
+  {"type": "set_property", "node": "Player", "property": "position", "value": [0, 0]},
+  {"type": "create_script", "node": "Player", "code": "extends CharacterBody2D\\n..."},
+  {"type": "connect_signal", "from_node": "A", "signal": "body_entered", "to_node": "B", "method": "_on_body"},
+  {"type": "delete_node", "node": "NomDuNoeudASupprimer"}
+], "explanation": "Description en français pour l'utilisateur"}
+RÈGLES : 1) Jamais de texte hors JSON. 2) Nœuds/propriétés Godot 4.x RÉELS uniquement. 3) Le type pour créer un nœud est EXACTEMENT "create_node" (jamais "add_node"). 4) Si la demande est purement textuelle, "actions": [] et réponds dans "explanation".`;
+
+      // ============================================================
+      // ⚙️ PARAMÈTRES FONCTIONNELS (plus rien "pour le décor")
+      // ============================================================
+      // 1) System prompt UTILISATEUR (Paramètres → Instructions) injecté
+      //    réellement dans CHAQUE appel IA, rechargé à chaque envoi.
+      function buildSystemPrompt(): string {
+        let systemPrompt = GODOT_HARNESS;
+        try {
+          const enabled = localStorage.getItem('gd4_custom_prompt_on') !== 'off';
+          const userInstructions = enabled ? (getSystemPrompt(currentUserId) || '').trim() : '';
+          if (userInstructions) {
+            systemPrompt += `\n\n[Instructions personnalisées de l'utilisateur — à respecter STRICTEMENT]\n${userInstructions}`;
+          }
+        } catch { /* repli silencieux */ }
+        return systemPrompt;
+      }
+
+      // 2) Créativité (température) — réglage réel passé aux modèles
+      function getCreativity(): number {
+        try {
+          const v = Number(localStorage.getItem('gd4_creativity'));
+          if (Number.isFinite(v) && v >= 0 && v <= 1) return v;
+        } catch { /* ignore */ }
+        return 0.7;
+      }
+
+      // 3) Port du relais — lu depuis les Paramètres (défaut 9091)
+      function getRelayPort(): number {
+        try {
+          const p = Number(localStorage.getItem('gd4_relay_port'));
+          if (Number.isInteger(p) && p >= 1 && p <= 65535) return p;
+        } catch { /* ignore */ }
+        return 9091;
+      }
+
+      // 4) 🔔 Carillon de fin de réponse (Paramètres → Général, toggle Son)
+      function playChime(): void {
+        try {
+          if (localStorage.getItem('gd4_sound_on') === 'off') return;
+          const AudioCtor: any = (window as any).AudioContext || (window as any).webkitAudioContext;
+          if (!AudioCtor) return;
+          const ctx = new AudioCtor();
+          const notes = [523.25, 659.25, 783.99];
+          notes.forEach((freq, i) => {
+            const osc = ctx.createOscillator();
+            const gain = ctx.createGain();
+            osc.type = 'sine';
+            osc.frequency.value = freq;
+            gain.gain.setValueAtTime(0.08, ctx.currentTime + i * 0.09);
+            gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + i * 0.09 + 0.25);
+            osc.connect(gain).connect(ctx.destination);
+            osc.start(ctx.currentTime + i * 0.09);
+            osc.stop(ctx.currentTime + i * 0.09 + 0.3);
+          });
+        } catch { /* ignore */ }
+      }
+
+      // Les données vivent dans des espaces SÉPARÉS PAR COMPTE (voir lib/userData.ts).
+      // État courant résolu de façon asynchrone en fin de script (compte Google ou anonyme).
+      let currentUserId: string | null = getUserFromCache()?.id ?? null;
+      let currentUserEmail: string = getUserFromCache()?.email || 'anonyme';
+
+      const welcomeView = document.getElementById('welcomeView');
+      const messagesList = document.getElementById('messagesList');
+      const chatContainer = document.getElementById('chatContainer');
+      const chatForm = document.getElementById('chatForm') as HTMLFormElement;
+      const promptInput = document.getElementById('promptInput') as HTMLTextAreaElement;
+      const modelSelect = document.getElementById('modelSelect') as HTMLSelectElement;
+      const upgradeHeaderBtn = document.getElementById('upgradeHeaderBtn');
+      const captureBtn = document.getElementById('captureBtn');
+      const attachImageBtn = document.getElementById('attachImageBtn');
+      const attachImageInput = document.getElementById('attachImageInput') as HTMLInputElement | null;
+      const attachmentMenuBtn = document.getElementById('attachmentMenuBtn');
+      const attachmentMenu = document.getElementById('attachmentMenu');
+      const attachBadge = document.getElementById('attachBadge');
+      const deepThinkToggle = document.getElementById('deepThinkToggle');
+      const quotaDisplay = document.getElementById('quotaDisplay');
+
+      let currentChatId: string | null = getActiveChatId(currentUserId);
+      let currentScreenshot: string | null = null;
+      let currentScreenshotMime = 'image/png';
+      let captureTimeout: ReturnType<typeof setTimeout> | null = null;
+      let deepThinkOn = false;
+      let interfaceLanguage = document.documentElement.lang === 'en' ? 'en' : 'fr';
+      const processedRequestIds = new Set<string>();
+      // Requêtes envoyées PAR L'APP elle-même : on attend un ai_result portant
+      // ce request_id pour retirer l'animation et afficher la réponse.
+      const pendingAppRequests = new Map<string, HTMLElement>();
+      let latestProjectFiles: Array<{ path: string; content: string }> = [];
+      const statusText: Record<string, { online: string; offline: string }> = {
+        fr: { online: 'Godot : connecté', offline: 'Godot : hors ligne' },
+        en: { online: 'Godot: connected', offline: 'Godot: offline' },
+      };
+
+
+      // ============================================================
+      // WEBSOCKET VERS LE RELAIS LOCAL (9091) — pont vers le plugin
+      // ============================================================
+      // WebSocket vers le relais — avec RECONNEXION AUTOMATIQUE sans reload :
+      // avant, ws.onclose faisait location.reload() → la réponse en cours
+      // et la conversation affichée DISPARAISSAIENT à la moindre coupure.
+      let ws: WebSocket;
+      function connectRelay() {
+        ws = new WebSocket(`ws://127.0.0.1:${getRelayPort()}/ws/ui`);
+        ws.onopen = () => {
+          console.log('[GD4] WebSocket relais connecté');
+          // Demande au plugin son contexte projet (arborescence + scripts).
+          // Utile quand l'app (re)démarre APRÈS Godot : sans ça, l'app n'a
+          // jamais reçu le context_response émis à la connexion du plugin.
+          try { ws.send(JSON.stringify({ type: "request_context" })); } catch { /* pas encore prêt */ }
+        };
+        ws.onclose = () => {
+          setGodotStatus(false);
+          setTimeout(connectRelay, 3000); // réessaie sans recharger la page
+        };
+        ws.onmessage = (ev) => { void onRelayMessage(ev); };
+      }
+      connectRelay();
+
+      // ⚙️ Paramètre PORT du relais (Settings) → reconnexion immédiate sur le nouveau port
+      window.addEventListener('gd4-relay-port-changed', () => {
+        try { ws?.close(); } catch { /* la reconnexion automatique prend le relais */ }
+        appendMessageUI('assistant', `⚙️ Port du relais mis à jour (${getRelayPort()}) — reconnexion en cours…`, 'Système');
+      });
+
+      // Contexte projet injecté dans CHAQUE prompt envoyé au modèle (chat web
+      // ET questions venant du plugin) : mémoire globale du projet + contexte
+      // manuel + arborescence fichiers collectés. Le résumé réapparaît au bon moment
+      // selon le modèle choisi pour que le projet ne soit jamais oublié.
+      function buildProjectContext(files?: Array<{ path: string; content: string }>, modelKeyOverride?: string): string {
+        const activeModelKey = modelKeyOverride || (modelSelect.value === 'auto' ? determineAutoModel(promptInput?.value || '') : modelSelect.value);
+        const list = (files && files.length ? files : latestProjectFiles) || [];
+        // 🧠 Toggle « Contexte » : OFF → le modèle répond sans mémoire projet
+        if (memoryOn) {
+          const memoryContext = buildInjectedProjectContext(currentUserId, activeModelKey, list);
+          if (memoryContext) return memoryContext;
+        }
+        if (!list.length) return '';
+        return `\n\n[Fichiers du projet Godot disponibles pour analyse]\n${list.map((file) => `\n--- ${file.path} ---\n${file.content}`).join('')}`;
+      }
+
+      function rememberProjectConversation(role: 'user' | 'assistant', text: string, modelKey: string): void {
+        recordProjectConversation(currentUserId, { role, text, modelKey: modelKey || 'unknown' });
+      }
+
+      let godotOnline = false; // dernier état connu du dock Godot
+      function setGodotStatus(online: boolean) {
+        godotOnline = online;
+        const dot = document.getElementById('godotDot');
+        const label = document.getElementById('godotLabel');
+        if (!dot || !label) return;
+        dot.className = `w-2 h-2 rounded-full ${online ? 'bg-emerald-400' : 'bg-rose-500'}`;
+        label.textContent = online ? statusText[interfaceLanguage].online : statusText[interfaceLanguage].offline;
+      }
+
+      window.addEventListener('gd4-language-changed', (event: any) => {
+        interfaceLanguage = event.detail?.language === 'en' ? 'en' : 'fr';
+        setGodotStatus(document.getElementById('godotDot')?.classList.contains('bg-emerald-400') || false);
+      });
+
+      // (onopen / onclose / onmessage sont posés dans connectRelay)
+      // Filet de sécurité : polling HTTP /health (même source que les Paramètres),
+      // pour un statut toujours cohérent même si le relais n'envoie pas de messages.
+      async function refreshGodotStatus() {
+        try {
+          const res = await fetch('http://127.0.0.1:9091/health');
+          const d = await res.json();
+          setGodotStatus(!!d.godot_connected);
+        } catch { /* relais injoignable → ws.onclose a déjà mis hors ligne */ }
+      }
+      refreshGodotStatus();
+      setInterval(refreshGodotStatus, 4000);
+
+      async function onRelayMessage(event: MessageEvent) {
+        const data = JSON.parse(event.data);
+
+        if (data.type === "status") setGodotStatus(!!data.godot_connected);
+
+        // Le plugin envoie son contexte dès la connexion, avant même une question.
+        if (data.type === "context_response") {
+          if (Array.isArray(data.project_files)) {
+            latestProjectFiles = data.project_files.filter((file: any) =>
+              file && typeof file.path === 'string' && typeof file.content === 'string'
+            );
+            console.log(`[GD4] Contexte projet reçu : ${latestProjectFiles.length} fichier(s)`);
+          }
+        }
+
+        // Capture demandée par l'app web → stockée pour le chat web
+        if (data.type === "screenshot_response") {
+          if (captureTimeout) { clearTimeout(captureTimeout); captureTimeout = null; }
+          currentScreenshot = data.data;
+          currentScreenshotMime = data.mime || 'image/png';
+          if (currentScreenshot) appendScreenshotUI(currentScreenshot, currentScreenshotMime, 'Capture Godot reçue');
+          attachBadge?.classList.remove('hidden');
+          if (attachBadge) attachBadge.textContent = '📸 capture Godot jointe';
+        }
+
+        if (data.type === "screenshot_error") {
+          if (captureTimeout) { clearTimeout(captureTimeout); captureTimeout = null; }
+          appendMessageUI('assistant', `⚠️ Capture Godot impossible : ${data.error || 'aucune image reçue.'}`, 'Système');
+        }
+
+        // ➕ « NOUVELLE CONVERSATION » demandée depuis le dock Godot :
+        // on invalide la session plugin en cours (la prochaine réponse créera
+        // une VRAIE nouvelle conversation '🔌 ...' via savePluginExchange) ET
+        // on nettoie la vue miroir de l'app (exactement comme « Nouvelle
+        // conversation » du header web). Puis on confirme au dock.
+        if (data.type === "plugin_new_chat") {
+          try {
+            pluginChatId = null;
+            try { localStorage.removeItem(pluginChatKey()); } catch { /* ignore */ }
+            resetChatView();
+            void refreshTokenQuotaDisplay();
+            const explanation = 'Nouvelle conversation prête — pose ta question depuis le dock !';
+            appendMessageUI('assistant', `➕ ${explanation} (prochain échange = nouvelle conversation « 🔌 »)`, 'Système');
+            if (ws.readyState === WebSocket.OPEN) {
+              ws.send(JSON.stringify({ type: "plugin_new_chat_ok", explanation, model: "Système" }));
+            }
+            // ⚙️ SYNCHRO : si le dock a demandé, la sauvegarde des prochains
+            // échanges plugin démarrera une conversation « 🔌 … » neuve car
+            // pluginChatId vient d'être invalidé (plus haut).
+            void refreshTokenQuotaDisplay();
+          } catch (err: any) {
+            console.error('[GD4] plugin_new_chat échoué :', err);
+          }
+          return;
+        }
+
+        // 📥 Historique complet envoyé par le plugin → import dans le compte.
+        // Format attendu : {type:"plugin_history", chats:[{title, messages:[{role, text}]}]}
+        if (data.type === "plugin_history" && Array.isArray(data.chats)) {
+          void importPluginHistory(data.chats);
+        }
+
+        // 📥 Réponse de l'IA pour une question envoyée PAR L'APP elle-même :
+        // on retire l'animation d'attente et on affiche la réponse.
+        if (data.type === "ai_result" && data.request_id && pendingAppRequests.has(data.request_id)) {
+          const typing = pendingAppRequests.get(data.request_id);
+          pendingAppRequests.delete(data.request_id);
+          typing?.remove();
+          const actions = Array.isArray(data.actions) ? data.actions : [];
+          let txt = String(data.explanation || '');
+          if (actions.length) txt += `\n\n✅ ${actions.length} action(s) appliquée(s) dans Godot.`;
+          const rawModel = String(data.model || 'IA');
+          const displayModel = ['auto', 'groq', 'nvidia', 'cloudflare'].includes(rawModel) ? selectedModelName(rawModel) : rawModel;
+          const bubble = appendMessageUI('assistant', '', displayModel);
+          const content = bubble.querySelector('.message-content');
+          if (content) content.textContent = txt;
+          // ENREGISTREMENT de la réponse dans la conversation (local + cloud)
+          void saveMessageToStorage('assistant', txt, data.model || 'IA');
+          return;
+        }
+
+        // ✅ Accusé du dock Godot : les actions sont VRAIMENT appliquées dans la scène.
+        // (visible dans la console F12 — preuve du trajet app → relais → plugin)
+        if (data.type === "actions_applied" && typeof data.request_id === 'string' && data.request_id.startsWith('app_')) {
+          console.log(`[GD4] Godot confirme : ${data.applied ?? '?'} action(s) appliquée(s) (${data.request_id})`);
+          return;
+        }
+
+
+        // ❗ Question envoyée DEPUIS LE PLUGIN (console ou dock Godot) →
+        // l'APP est le SEUL cerveau : elle appelle l'IA avec sa clé, puis
+        // renvoie ai_result au relais qui le transmet au plugin. Les actions
+        // repartent ensuite vers Godot pour être appliquées dans la scène.
+        // ⚠️ L'app web doit donc être OUVERTE pour que le plugin réponde.
+        if (data.type === "plugin_chat" || data.type === "ui_chat") {
+          // 🔒 ÉCHO de nos propres questions (request_id app_...) → ce n'est
+          // PAS une question du plugin : l'app a déjà répondu dans le submit,
+          // sinon la question « repartait » vers Godot et se sauvegardait en
+          // double avec un titre pollué par le contexte projet.
+          if (typeof data.request_id === 'string' && data.request_id.startsWith('app_')) return;
+          try {
+          const requestId = typeof data.request_id === 'string' ? data.request_id : '';
+          if (requestId && processedRequestIds.has(requestId)) return;
+          if (requestId) {
+            processedRequestIds.add(requestId);
+            if (processedRequestIds.size > 200) {
+              const oldestRequestId = processedRequestIds.values().next().value;
+              if (oldestRequestId) processedRequestIds.delete(oldestRequestId);
+            }
+          }
+          // 📱 Sens demandé : la question posée dans le PLUGIN apparaît ICI,
+          // en direct dans l'app (et la réponse juste en dessous).
+          appendMessageUI('user', String(data.prompt || ''), 'Plugin Godot');
+
+          const sel = modelSelect.value;
+          const modelKey = sel === 'auto' ? determineAutoModel(data.prompt || '') : sel;
+          if (Array.isArray(data.project_files)) latestProjectFiles = data.project_files;
+          const fileContext = buildProjectContext(
+            Array.isArray(data.project_files) && data.project_files.length ? data.project_files : undefined,
+            modelKey,
+          );
+          // QUOTA JUSTE : estimation des tokens INPUT du prompt plugin.
+          const estInputTokens = Math.max(1, Math.ceil(((data.prompt || '') + fileContext).length / 4));
+          bumpUsage(true, estInputTokens, 0);
+          const quota = await checkTokenQuota(currentUserId, estInputTokens, 0).catch(() => ({ ok: true }));
+          updateTokenQuotaDisplay();
+          if (!quota.ok) {
+            ws.send(JSON.stringify({ type: "ai_result", request_id: requestId, explanation: "⚠️ Tokens limités atteints. La limite se réinitialise dans 8 heures.", actions: [], model: "Système" }));
+            appendMessageUI('assistant', '⚠️ Tokens limités atteints. La limite se réinitialise dans 8 heures.', 'Système');
+            return;
+          }
+          rememberProjectConversation('user', data.prompt || '', modelKey);
+          const typingPlugin = appendMessageUI('assistant', '<i>⏳ Réflexion en cours…</i>', 'Plugin Godot');
+          const result = await callGemini(modelKey, (data.prompt || '') + fileContext, data.image || null, data.image_mime || 'image/png');
+          typingPlugin.remove();
+          // 📱 …et la RÉPONSE s'affiche aussi en direct dans l'app.
+          const bubblePlugin = appendMessageUI('assistant', '', selectedModelName(modelKey));
+          const contentPlugin = bubblePlugin.querySelector('.message-content');
+          if (contentPlugin) contentPlugin.textContent = String(result.explanation || '');
+          rememberProjectConversation('assistant', result.explanation, modelKey);
+          // 🧠 MÉMOIRE : les actions venues du plugin entrent aussi au journal.
+          if (Array.isArray(result.actions) && result.actions.length) recordProjectActions(currentUserId, modelKey, result.actions);
+          // QUOTA JUSTE : décompte des tokens OUTPUT estimés de la réponse.
+          void consumeTokenQuotaRemote(0, Math.max(1, Math.ceil(String(result.explanation || '').length / 4)), QUOTA_WINDOW_HOURS, DEFAULT_INPUT_TOKENS, DEFAULT_OUTPUT_TOKENS)
+            .then(() => { void refreshTokenQuotaDisplay(); });
+          playChime();
+
+          // Réponse → relais → console + dock Godot (qui applique les actions)
+          ws.send(JSON.stringify({
+            type: "ai_result",
+            request_id: requestId,
+            explanation: result.explanation,
+            actions: result.actions,
+            model: selectedModelName(modelKey)
+          }));
+
+          // Historique : l'échange plugin devient une conversation du compte
+          void savePluginExchange(data.prompt || '', result.explanation, selectedModelName(modelKey));
+          } catch (err: any) {
+            // JAMAIS de crash silencieux : l'erreur part comme réponse visible
+            console.error('[GD4] Erreur cerveau IA :', err);
+            ws.send(JSON.stringify({
+              type: "ai_result",
+              request_id: typeof data.request_id === 'string' ? data.request_id : '',
+              explanation: `⚠️ Erreur du cerveau IA : ${err?.message || err}`,
+              actions: [],
+              model: "Système"
+            }));
+          }
+        }
+      }
+
+      // 🎮 « Ouvrir dans le plugin » : envoie la conversation au dock Godot
+      // et LIE les prochains échanges du plugin à CETTE conversation (ils
+      // continueront d'être enregistrés dedans, local + cloud).
+      window.addEventListener('open-in-plugin', (e: any) => {
+        const id = e.detail?.id;
+        const chat = getChats(currentUserId).find((c: Chat) => c.id === id);
+        if (!chat) return;
+        if (ws.readyState !== WebSocket.OPEN) {
+          appendMessageUI('assistant', '⚠️ Relais hors ligne — lance le serveur du plugin puis réessaie.', 'Système');
+          return;
+        }
+        if (!godotOnline) {
+          appendMessageUI('assistant', '⚠️ Godot est hors ligne : dans le dock, colle le code puis clique sur 🔗 Connecter, et réessaie.', 'Système');
+          return;
+        }
+        // Les prochains messages du plugin continueront CETTE conversation
+        pluginChatId = chat.id;
+        localStorage.setItem(pluginChatKey(), chat.id);
+        // Historique transféré au dock (30 derniers messages max)
+        const history = chat.messages.slice(-30).map((m: ChatMessage) => ({ role: m.role, text: m.text }));
+        ws.send(JSON.stringify({
+          type: "open_conversation",
+          chat_id: chat.id,
+          title: chat.title,
+          messages: history,
+        }));
+        const bubble = appendMessageUI('assistant', '', 'Système');
+        const content = bubble.querySelector('.message-content');
+        if (content) content.textContent = `🔌 Conversation « ${chat.title} » ouverte dans le plugin Godot (${history.length} message(s) transférés). Continue-la depuis le dock !`;
+      });
+
+      // (Secours : vision Cloudflare + texte NVIDIA NIM — voir callNvidia.)
+
+      function sleepMs(ms: number) {
+        return new Promise((r) => setTimeout(r, ms));
+      }
+
+      // Les yeux : le modèle VISION de Cloudflare Workers AI décrit la capture
+      // (Qwen 3.8 27B est texte seul). La vision reste sur Cloudflare (option 2)
+      // pour ne pas saturer le quota NVIDIA NIM.
+      async function describeImageWithVision(imageB64: string, imageMime = 'image/png'): Promise<string | null> {
+        void imageMime;
+        if (!cloudflareReady) return null;
+        const visionPrompt = `Tu es le module de vision de GD4 Assistant. Analyse cette image avec une précision maximale et décris tout ce qui est réellement visible, sans jamais inventer, compléter ou déduire un nom, un fichier, une valeur ou une erreur qui n'est pas lisible. Si un élément est absent ou illisible, écris exactement "non visible" ou "illisible". Réponds en français, en texte structuré avec les rubriques suivantes :
+1. TYPE_D_ECRAN : vue générale (éditeur Godot, scène, jeu, script, projet ou autre) et objectif probable de la vue.
+2. ARBORESCENCE : tous les nœuds lisibles de haut en bas, leur hiérarchie, types de nœuds et nœud sélectionné. Recopie les noms exactement quand ils sont lisibles.
+3. SCENE_ET_ZONE_CENTRALE : objets visibles, positions relatives, sprites, formes, collisions, textes, boutons, éléments manquants et état de l’exécution.
+4. INSPECTEUR : chaque propriété lisible, sa valeur, ressource assignée, transform, dimensions, visibilité, scripts et signaux. Indique explicitement les valeurs non lisibles.
+5. SCRIPT_ET_ERREURS : code, ligne, panneau Output/Debugger, erreurs, avertissements, traces et messages visibles. Recopie les erreurs exactement si elles sont lisibles.
+6. PROJET_ET_FICHIERS : chemins, scènes, scripts, dossiers, onglets et fichiers visibles.
+7. INDICES_TECHNIQUES : version Godot apparente, mode 2D/3D/Script, nœud actif, outil actif, caméra, sélection et état connecté/exécuté.
+8. DIAGNOSTIC_VISUEL : faits certains, éléments incertains et informations absentes.
+9. CONTEXTE_POUR_MODELE_TEXTE : un résumé complet et exploitable par le modèle texte (Qwen 3.8 27B) pour répondre à la demande utilisateur et proposer des actions Godot sûres.
+Ne décris que l'image fournie. Ne produis pas de code ni d'actions JSON. Sois très détaillé, conserve les noms, chiffres et erreurs exacts, et distingue toujours les faits lisibles des éléments incertains.`;
+        try {
+          const response = await fetch('/api/cloudflare', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              model: '@cf/meta/llama-3.2-11b-vision-instruct',
+              prompt: visionPrompt,
+              image: [imageB64],
+              max_tokens: 1600,
+              temperature: 0.1,
+            }),
+          });
+          if (!response.ok) return null;
+          const data = await response.json();
+          const text = data?.result?.response || '';
+          return String(text).trim() || null;
+        } catch {
+          return null;
+        }
+      }
+
+      // SECOURS NVIDIA : la capture est d'abord DÉCRITE par le modèle vision
+      // Cloudflare (DeepSeek V4 Flash est texte seul), puis le modèle texte
+      // produit les actions JSON Godot. Avec Groq, la capture part
+      // DIRECTEMENT au modèle multimodal Qwen 3.8 27B (voir requestGroqChat).
+
+      // Le cerveau texte 🟢 NVIDIA NIM : on passe par NOTRE serveur Astro
+      // (/api/nvidia) qui relaie vers integrate.api.nvidia.com (le navigateur
+      // ne peut pas y accéder directement : CORS → "Failed to fetch").
+      // DeepSeek V4 Flash « raisonne » dans reasoning_content puis place le
+      // JSON final dans content. La clé reste côté serveur (.env).
+      async function requestNvidiaChat(model: string, userPrompt: string): Promise<string> {
+        // Timeout client : DeepSeek « raisonne » longtemps ; au-delà de 4 min
+        // on abandonne proprement au lieu de laisser la connexion mourir
+        // (source du « Failed to fetch » vu précédemment).
+        const controller = new AbortController();
+        const timer = setTimeout(() => controller.abort(), 240_000);
+        let response: Response;
+        try {
+          response = await fetch('/api/nvidia', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              model,
+              messages: [
+                { role: 'system', content: buildSystemPrompt() },
+                { role: 'user', content: userPrompt },
+              ],
+              temperature: getCreativity(),
+              max_tokens: 4096,
+            }),
+            signal: controller.signal,
+          });
+        } catch (netErr: any) {
+          if (netErr?.name === 'AbortError') {
+            throw new Error('Délai dépassé (4 min) — DeepSeek a raisonné trop longtemps. Réessaie avec une question plus courte ou plus simple.');
+          }
+          throw new Error('Serveur Astro injoignable (Failed to fetch). Vérifie que `npm run dev` tourne bien sur le port 4321, puis recharge la page. Détail : ' + (netErr?.message || netErr));
+        } finally {
+          clearTimeout(timer);
+        }
+        if (!response.ok) {
+          const detail = (await response.text()).replace(/\s+/g, ' ').slice(0, 300);
+          if (response.status === 401) {
+            throw new Error('HTTP 401 — token NVIDIA refusé. Vérifie ta clé PUBLIC_NVIDIA_API_KEY dans .env (crée-la sur https://build.nvidia.com → Generate API Key) puis redémarre npm run dev.');
+          }
+          throw new Error(`NVIDIA HTTP ${response.status}${detail ? ` — ${detail}` : ''}`);
+        }
+        const data = await response.json();
+        if (data && data.success === false) {
+          const err = data.errors?.[0]?.message || 'erreur inconnue';
+          throw new Error(`NVIDIA : ${err}`);
+        }
+        let text = String(
+          data?.choices?.[0]?.message?.content
+          ?? data?.choices?.[0]?.message?.reasoning_content
+          ?? data?.choices?.[0]?.text
+          ?? ''
+        );
+        // Qwen/DeepSeek raisonnent parfois dans des blocs <think>...</think> — on les retire
+        // pour ne garder que la réponse exploitable (JSON Godot).
+        const stripped = text.replace(/<think>[\s\S]*?<\/think>/gi, '').trim();
+        if (stripped) text = stripped;
+        if (!text) throw new Error('réponse NVIDIA vide');
+        return text;
+      }
+
+      // ============================================================
+      // ⚡ GROQ — Qwen 3.8 27B (texte + vision) : le NOUVEAU cerveau.
+      //   POST https://api.groq.com/openai/v1/chat/completions
+      //   Auth : Bearer <PUBLIC_GROQ_API_KEY> — clé uniquement côté
+      //   serveur (.env), relayée par NOTRE proxy Astro /api/groq.
+      // Qwen 3.8 27B est multimodal chez Groq : la capture d'écran part
+      // DIRECTEMENT dans la requête (image_url en base64). Les éventuels
+      // blocs de raisonnement (think) sont retirés pour ne garder que
+      // le JSON Godot exploitable.
+      // ============================================================
+      async function requestGroqChat(model: string, userPrompt: string, imageB64: string | null, imageMime = 'image/png'): Promise<string> {
+        // Timeout client : au-delà de 4 min on abandonne proprement.
+        const controller = new AbortController();
+        const timer = setTimeout(() => controller.abort(), 240_000);
+        // Contenu user : texte seul, ou texte + image (format multimodal
+        // OpenAI-compatible attendu par Groq).
+        const userContent: any = imageB64
+          ? [
+              { type: 'text', text: userPrompt },
+              { type: 'image_url', image_url: { url: `data:${imageMime};base64,${imageB64}` } },
+            ]
+          : userPrompt;
+        let response: Response;
+        try {
+          response = await fetch('/api/groq', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              model,
+              messages: [
+                { role: 'system', content: buildSystemPrompt() },
+                { role: 'user', content: userContent },
+              ],
+              temperature: getCreativity(),
+              max_completion_tokens: 8192,
+            }),
+            signal: controller.signal,
+          });
+        } catch (netErr: any) {
+          if (netErr?.name === 'AbortError') {
+            throw new Error('Délai dépassé (4 min) — Groq met trop de temps à répondre. Réessaie avec une question plus courte ou plus simple.');
+          }
+          throw new Error('Serveur Astro injoignable (Failed to fetch). Vérifie que `npm run dev` tourne bien sur le port 4321, puis recharge la page. Détail : ' + (netErr?.message || netErr));
+        } finally {
+          clearTimeout(timer);
+        }
+        if (!response.ok) {
+          const detail = (await response.text()).replace(/\s+/g, ' ').slice(0, 300);
+          if (response.status === 401) {
+            throw new Error('HTTP 401 — clé Groq refusée. Vérifie ta clé PUBLIC_GROQ_API_KEY dans .env (crée-la sur https://console.groq.com → API Keys) puis redémarre npm run dev.');
+          }
+          throw new Error(`Groq HTTP ${response.status}${detail ? ` — ${detail}` : ''}`);
+        }
+        const data = await response.json();
+        if (data && data.success === false) {
+          const err = data.errors?.[0]?.message || 'erreur inconnue';
+          throw new Error(`Groq : ${err}`);
+        }
+        let text = String(
+          data?.choices?.[0]?.message?.content
+          ?? data?.choices?.[0]?.message?.reasoning
+          ?? data?.choices?.[0]?.text
+          ?? ''
+        );
+        // Qwen « réfléchit » parfois dans des blocs de raisonnement (think) —
+        // on les retire pour ne garder que la réponse exploitable (JSON Godot).
+        const thinkRe = new RegExp('<' + 'think[\\s\\S]*?' + '<' + '/think>', 'gi');
+        const stripped = text.replace(thinkRe, '').trim();
+        if (stripped) text = stripped;
+        if (!text) throw new Error('réponse Groq vide');
+        return text;
+      }
+
+      // Décodage du JSON Godot renvoyé par le modèle (tolérant au texte autour).
+      function parseGodotJson(text: string): { explanation: string; actions: any[] } {
+        try {
+          const parsed = JSON.parse(text.match(/\{[\s\S]*\}/)?.[0] || text);
+          return { explanation: parsed.explanation || 'OK', actions: Array.isArray(parsed.actions) ? parsed.actions : [] };
+        } catch {
+          return { explanation: text, actions: [] };
+        }
+      }
+
+      // ============================================================
+      // 🟢 NVIDIA NIM (DeepSeek V4 Flash) — SECOURS, texte uniquement.
+      //   POST https://integrate.api.nvidia.com/v1/chat/completions
+      //   Auth : Bearer <PUBLIC_NVIDIA_API_KEY>
+      //   body: { model, messages, max_tokens }
+      // La vision passe par le modèle vision Cloudflare (option 2).
+      // ============================================================
+      async function callNvidia(modelKey: string, prompt: string, imageB64: string | null, imageMime = 'image/png') {
+        if (!nvidiaReady) {
+          return { explanation: '⚠️ Clé NVIDIA NIM manquante côté serveur. Crée un token gratuit sur https://build.nvidia.com → Generate API Key, puis colle-le dans .env sur PUBLIC_NVIDIA_API_KEY= et redémarre le serveur.', actions: [] };
+        }
+        let finalPrompt = (deepThinkOn ? "Raisonne étape par étape avant de produire le JSON.\n" : "") + prompt;
+        if (imageB64) {
+          // 🟢 Option 2 : la VISION reste sur Cloudflare Workers AI
+          const description = await describeImageWithVision(imageB64, imageMime);
+          finalPrompt += description
+            ? `\n\n[Capture d'écran de l'éditeur Godot — description faite par le modèle vision]${description}`
+            : '\n\n[La description vision a échoué : ne déduis rien de l’image.]';
+        }
+        try {
+          const text = await requestNvidiaChat(nvidiaModel, finalPrompt);
+          try {
+            const parsed = JSON.parse(text.match(/\{[\s\S]*\}/)?.[0] || text);
+            return { explanation: parsed.explanation || 'OK', actions: parsed.actions || [] };
+          } catch {
+            return { explanation: text, actions: [] };
+          }
+        } catch (error: any) {
+          return { explanation: `⚠️ NVIDIA NIM indisponible : ${error?.message || error}`, actions: [] };
+        }
+      }
+
+      // ============================================================
+      // APPEL MODELE — ⚡ Groq (Qwen 3.8 27B, texte + vision) par défaut.
+      // L'option 🟢 NVIDIA du sélecteur reste disponible en secours, et
+      // l'option ☁️ Cloudflare fonctionne sans clé Groq/NVIDIA.
+      // ============================================================
+      async function callGroq(prompt: string, imageB64: string | null, imageMime = 'image/png') {
+        if (!groqReady) {
+          return { explanation: '⚠️ Clé Groq manquante côté serveur. Crée une clé gratuite sur https://console.groq.com → API Keys, puis colle-la dans .env sur PUBLIC_GROQ_API_KEY= et redémarre le serveur.', actions: [] };
+        }
+        const finalPrompt = (deepThinkOn ? "Raisonne étape par étape avant de produire le JSON.\n" : "") + prompt;
+        try {
+          const text = await requestGroqChat(groqModel, finalPrompt, imageB64, imageMime);
+          return parseGodotJson(text);
+        } catch (error: any) {
+          // Secours : si l'appel AVEC image a échoué, on demande au modèle
+          // vision Cloudflare de décrire la capture, puis on retente en
+          // texte seul (ne se déclenche que si une image était jointe).
+          if (imageB64 && cloudflareReady) {
+            try {
+              const description = await describeImageWithVision(imageB64, imageMime);
+              if (description) {
+                const text = await requestGroqChat(
+                  groqModel,
+                  finalPrompt + `\n\n[Capture d'écran de l'éditeur Godot — description faite par le modèle vision]${description}`
+                );
+                return parseGodotJson(text);
+              }
+            } catch { /* on tombe dans le message d'erreur global */ }
+          }
+          return { explanation: `⚠️ Groq indisponible : ${error?.message || error}`, actions: [] };
+        }
+      }
+
+      // ☁️ Cloudflare Workers AI seul (secours sans clé Groq/NVIDIA) :
+      // vision Cloudflare pour la capture, Qwen Cloudflare pour le JSON.
+      async function callCloudflareOnly(prompt: string, imageB64: string | null, imageMime = 'image/png') {
+        if (!cloudflareReady) {
+          return { explanation: '⚠️ Clé Cloudflare manquante côté serveur (.env : PUBLIC_CLOUDFLARE_API_KEY + PUBLIC_CLOUDFLARE_ACCOUNT_ID).', actions: [] };
+        }
+        const finalPrompt = (deepThinkOn ? "Raisonne étape par étape avant de produire le JSON.\n" : "") + prompt;
+        let fullPrompt = finalPrompt;
+        if (imageB64) {
+          const description = await describeImageWithVision(imageB64, imageMime);
+          fullPrompt += description
+            ? `\n\n[Capture d'écran de l'éditeur Godot — description faite par le modèle vision]${description}`
+            : "\n\n[La description vision a échoué : ne déduis rien de l'image.]";
+        }
+        try {
+          const response = await fetch('/api/cloudflare', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              model: cloudflareModel,
+              messages: [
+                { role: 'system', content: buildSystemPrompt() },
+                { role: 'user', content: fullPrompt },
+              ],
+              temperature: getCreativity(),
+              max_tokens: 4096,
+            }),
+          });
+          if (!response.ok) throw new Error(`Cloudflare HTTP ${response.status}`);
+          const data = await response.json();
+          if (data && data.success === false) {
+            throw new Error(data.errors?.[0]?.message || 'erreur inconnue');
+          }
+          let text = String(data?.result?.response || '');
+          const thinkRe = new RegExp('<' + 'think[\\s\\S]*?' + '<' + '/think>', 'gi');
+          const stripped = text.replace(thinkRe, '').trim();
+          if (stripped) text = stripped;
+          if (!text) throw new Error('réponse Cloudflare vide');
+          return parseGodotJson(text);
+        } catch (error: any) {
+          return { explanation: `⚠️ Cloudflare indisponible : ${error?.message || error}`, actions: [] };
+        }
+      }
+
+      async function callGemini(modelKey: string, prompt: string, imageB64: string | null, imageMime = 'image/png') {
+        if (modelKey === 'nvidia') return callNvidia('nvidia', prompt, imageB64, imageMime);
+        if (modelKey === 'cloudflare') return callCloudflareOnly(prompt, imageB64, imageMime);
+        return callGroq(prompt, imageB64, imageMime);
+      }
+
+      // ============================================================
+      // QUOTA TOKEN — PAR COMPTE, appliqué CÔTÉ SERVEUR (RPC consume_token_quota :
+      // décrément atomique, incontournable côté client). Repli automatique
+      // sur le compteur LOCAL du compte si le cloud est indisponible.
+      // Réinitialisation toutes les 8 heures (3 fois par jour).
+      // Tokens INPUT : 18 000  |  Tokens OUTPUT : 7 000
+      // ============================================================
+      const DEFAULT_INPUT_TOKENS = 18000;
+      const DEFAULT_OUTPUT_TOKENS = 7000;
+      const QUOTA_WINDOW_HOURS = 8;
+
+      // 🎟️ BONUS PROMO LOCAL : permet de tester les codes promo SANS compte
+      // ni migration Supabase (appliqué au quota local du navigateur).
+      // Dès que 003_token_quota_promo.sql est exécutée dans Supabase, la
+      // version CLOUD (atomique, par compte) prend automatiquement le relais.
+      function getLocalPromoBonus(): { input: number; output: number } {
+        try {
+          const raw = JSON.parse(localStorage.getItem('gd4_local_promo_bonus') || 'null');
+          if (raw && typeof raw === 'object') {
+            return { input: Number(raw.input) || 0, output: Number(raw.output) || 0 };
+          }
+        } catch { /* ignore */ }
+        return { input: 0, output: 0 };
+      }
+      const lastQuota = {
+        remainingInput: DEFAULT_INPUT_TOKENS,
+        remainingOutput: DEFAULT_OUTPUT_TOKENS,
+        limitInput: DEFAULT_INPUT_TOKENS,
+        limitOutput: DEFAULT_OUTPUT_TOKENS,
+      };
+
+      async function checkTokenQuota(userId?: string | null, pInputTokens = 1, pOutputTokens = 0): Promise<{ ok: boolean; remainingInput: number; remainingOutput: number; limitInput: number; limitOutput: number }> {
+        // 1) Compte connecté → décrément atomique côté Supabase
+        if (userId) {
+          const remote = await consumeTokenQuotaRemote(pInputTokens, pOutputTokens, QUOTA_WINDOW_HOURS, DEFAULT_INPUT_TOKENS, DEFAULT_OUTPUT_TOKENS);
+          if (remote) {
+            lastQuota.remainingInput = remote.remainingInput;
+            lastQuota.remainingOutput = remote.remainingOutput;
+            lastQuota.limitInput = remote.limitInput;
+            lastQuota.limitOutput = remote.limitOutput;
+            return { ok: remote.ok, remainingInput: remote.remainingInput, remainingOutput: remote.remainingOutput, limitInput: remote.limitInput, limitOutput: remote.limitOutput };
+          }
+          // 2) Cloud indisponible → repli sur le compteur LOCAL du compte
+          const email = currentUserEmail || 'compte';
+          const now = Date.now();
+          let q = getQuota(userId);
+          if (!q || q.email !== email || now > q.reset) {
+            q = { email, used: 0, limit: DEFAULT_INPUT_TOKENS + getLocalPromoBonus().input, reset: now + QUOTA_WINDOW_HOURS * 3600 * 1000 };
+          }
+          if (q.used >= q.limit) {
+            setQuota(userId, q);
+            lastQuota.remainingInput = 0;
+            lastQuota.remainingOutput = 0;
+            lastQuota.limitInput = q.limit;
+            lastQuota.limitOutput = q.limit;
+            return { ok: false, remainingInput: 0, remainingOutput: 0, limitInput: q.limit, limitOutput: q.limit };
+          }
+          q.used += pInputTokens;   // QUOTA JUSTE : on décompte l'estimation réelle du prompt
+          setQuota(userId, q);
+          lastQuota.remainingInput = q.limit - q.used;
+          lastQuota.remainingOutput = Math.max(0, q.limit - q.used);
+          lastQuota.limitInput = q.limit;
+          lastQuota.limitOutput = q.limit;
+          return { ok: true, remainingInput: q.limit - q.used, remainingOutput: Math.max(0, q.limit - q.used), limitInput: q.limit, limitOutput: q.limit };
+        }
+
+        // 3) Anonyme → compteur local historique (espace "anonyme")
+        const now = Date.now();
+        let q = getQuota(null);
+        if (!q || now > q.reset) {
+          q = { email: 'anonyme', used: 0, limit: DEFAULT_INPUT_TOKENS + getLocalPromoBonus().input, reset: now + QUOTA_WINDOW_HOURS * 3600 * 1000 };
+        }
+        if (q.used >= q.limit) {
+          setQuota(null, q);
+          lastQuota.remainingInput = 0;
+          lastQuota.remainingOutput = 0;
+          lastQuota.limitInput = q.limit;
+          lastQuota.limitOutput = q.limit;
+          return { ok: false, remainingInput: 0, remainingOutput: 0, limitInput: q.limit, limitOutput: q.limit };
+        }
+        q.used += pInputTokens;   // QUOTA JUSTE : estimation réelle du prompt (repli local)
+        setQuota(null, q);
+        lastQuota.remainingInput = q.limit - q.used;
+        lastQuota.remainingOutput = Math.max(0, q.limit - q.used);
+        lastQuota.limitInput = q.limit;
+        lastQuota.limitOutput = q.limit;
+        return { ok: true, remainingInput: q.limit - q.used, remainingOutput: Math.max(0, q.limit - q.used), limitInput: q.limit, limitOutput: q.limit };
+      }
+
+      function updateTokenQuotaDisplay() {
+        if (quotaDisplay) {
+          const inputStr = lastQuota.remainingInput.toLocaleString();
+          const outputStr = lastQuota.remainingOutput.toLocaleString();
+          quotaDisplay.textContent = `📝 ${inputStr} in · 💬 ${outputStr} out`;
+        }
+      }
+
+      async function refreshTokenQuotaDisplay(): Promise<void> {
+        if (currentUserId) {
+          const state = await fetchTokenQuotaRemote(currentUserId);
+          if (state) {
+            const expired = state.resetAt ? new Date(state.resetAt).getTime() <= Date.now() : false;
+            lastQuota.limitInput = state.limitInput;
+            lastQuota.limitOutput = state.limitOutput;
+            lastQuota.remainingInput = expired ? state.limitInput : Math.max(0, state.limitInput - state.usedInput);
+            lastQuota.remainingOutput = expired ? state.limitOutput : Math.max(0, state.limitOutput - state.usedOutput);
+          }
+        } else {
+          const q = getQuota(null);
+          if (q && q.reset > Date.now()) {
+            lastQuota.limitInput = q.limit;
+            lastQuota.limitOutput = q.limit;
+            lastQuota.remainingInput = Math.max(0, q.limit - q.used);
+            lastQuota.remainingOutput = Math.max(0, q.limit - q.used);
+          }
+        }
+        updateTokenQuotaDisplay();
+      }
+
+      // 🎟️ Un code promo vient d'être appliqué (PricingSection) → rafraîchit
+      // l'affichage du quota avec les nouvelles limites (bonus inclus).
+      window.addEventListener('gd4-quota-changed', () => {
+        // Mode LOCAL (anonyme, ou cloud indisponible) : le quota du navigateur a
+        // été créé AVANT l'application du bonus → on réapplique la limite (base +
+        // bonus) au record en cours pour que le nouveau quota soit visible tout de suite.
+        try {
+          const bonus = getLocalPromoBonus().input;
+          const localId = currentUserId || null;
+          const q = getQuota(localId);
+          if (q && q.reset > Date.now()) {
+            setQuota(localId, { ...q, limit: DEFAULT_INPUT_TOKENS + bonus });
+          }
+        } catch { /* ignore */ }
+        void refreshTokenQuotaDisplay();
+      });
+
+      // ============================================================
+      // BOUTONS UI
+      // ============================================================
+      captureBtn?.addEventListener('click', () => {
+        attachmentMenu?.classList.add('hidden');
+        attachmentMenuBtn?.setAttribute('aria-expanded', 'false');
+        if (ws.readyState === WebSocket.OPEN) {
+          currentScreenshot = null;   // nouvelle capture → on remplace l'ancienne
+          ws.send(JSON.stringify({ command: "capture_screen" }));
+          appendMessageUI('assistant', '📸 Capture Godot demandée…', 'Système');
+          if (captureTimeout) clearTimeout(captureTimeout);
+          captureTimeout = setTimeout(() => {
+            captureTimeout = null;
+            if (!currentScreenshot) {
+              appendMessageUI('assistant', '⚠️ Godot n’a pas renvoyé la capture. Vérifie que le plugin est connecté (pastille verte) puis réessaie.', 'Système');
+            }
+          }, 10000);
+        } else {
+          appendMessageUI('assistant', '⚠️ Relais hors ligne — impossible de capturer Godot. Tu peux coller une image avec Ctrl+V ou en joindre une.', 'Système');
+        }
+      });
+
+      attachImageBtn?.addEventListener('click', () => attachImageInput?.click());
+      attachmentMenuBtn?.addEventListener('click', () => {
+        const isHidden = attachmentMenu?.classList.toggle('hidden') ?? true;
+        attachmentMenuBtn.setAttribute('aria-expanded', String(!isHidden));
+      });
+      document.addEventListener('click', (event) => {
+        const target = event.target as Node;
+        if (!attachmentMenu?.contains(target) && !attachmentMenuBtn?.contains(target)) {
+          attachmentMenu?.classList.add('hidden');
+          attachmentMenuBtn?.setAttribute('aria-expanded', 'false');
+        }
+      });
+      attachImageInput?.addEventListener('change', () => {
+        attachmentMenu?.classList.add('hidden');
+        attachmentMenuBtn?.setAttribute('aria-expanded', 'false');
+        const file = attachImageInput.files?.[0];
+        if (!file) return;
+        if (!file.type.startsWith('image/')) {
+          appendMessageUI('assistant', '⚠️ Sélectionne un fichier image.', 'Système');
+          attachImageInput.value = '';
+          return;
+        }
+        const reader = new FileReader();
+        reader.onload = () => {
+          const result = typeof reader.result === 'string' ? reader.result : '';
+          currentScreenshot = result.includes(',') ? result.split(',')[1] : result;
+          currentScreenshotMime = file.type || 'image/png';
+          attachBadge?.classList.remove('hidden');
+          attachBadge!.textContent = `🖼️ ${file.name}`;
+        };
+        reader.readAsDataURL(file);
+      });
+
+      // ============================================================
+      // 📋 CTRL+V — coller une image directement dans le chat
+      // ============================================================
+      function attachImageFromBase64(b64: string, mime: string, label: string): void {
+        currentScreenshot = b64;
+        currentScreenshotMime = mime || 'image/png';
+        appendScreenshotUI(b64, currentScreenshotMime, label);
+        attachBadge?.classList.remove('hidden');
+        if (attachBadge) attachBadge.textContent = '📋 image collée';
+      }
+
+      document.addEventListener('paste', (event: ClipboardEvent) => {
+        const items = event.clipboardData?.items;
+        if (!items) return;
+        for (const item of Array.from(items)) {
+          if (!item.type.startsWith('image/')) continue;
+          const file = item.getAsFile();
+          if (!file) continue;
+          event.preventDefault();   // on garde la main (pas de collage de texte parasite)
+          const reader = new FileReader();
+          reader.onload = () => {
+            const result = typeof reader.result === 'string' ? reader.result : '';
+            const b64 = result.includes(',') ? result.split(',')[1] : result;
+            if (b64) attachImageFromBase64(b64, item.type || file.type || 'image/png', 'Image collée (Ctrl+V)');
+          };
+          reader.readAsDataURL(file);
+          return;
+        }
+      });
+
+      deepThinkToggle?.addEventListener('click', () => {
+        deepThinkOn = !deepThinkOn;
+        deepThinkToggle.classList.toggle('text-cyan-400', deepThinkOn);
+        deepThinkToggle.classList.toggle('text-slate-400', !deepThinkOn);
+      });
+
+      // 🧠 Toggle mémoire/contexte projet — ON par défaut, mémorisé
+      let memoryOn = true;
+      const memoryToggle = document.getElementById('memoryToggle') as HTMLButtonElement | null;
+      try { memoryOn = localStorage.getItem('gd4_memory_on') !== 'off'; } catch { /* ignore */ }
+      function paintMemoryToggle(): void {
+        memoryToggle?.classList.toggle('text-violet-300', memoryOn);
+        memoryToggle?.classList.toggle('text-slate-400', !memoryOn);
+      }
+      paintMemoryToggle();
+      memoryToggle?.addEventListener('click', () => {
+        memoryOn = !memoryOn;
+        try { localStorage.setItem('gd4_memory_on', memoryOn ? 'on' : 'off'); } catch { /* ignore */ }
+        paintMemoryToggle();
+        appendMessageUI('assistant', memoryOn
+          ? '🧠 Contexte projet ACTIVÉ — le modèle reçoit le résumé de la conversation + le journal des actions.'
+          : '🧠 Contexte projet DÉSACTIVÉ — le modèle répond sans le fil des échanges précédents.', 'Système');
+      });
+
+      // 🎤 Dictée vocale (Web Speech API) — dicte ta question au micro
+      const SpeechRec: any = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+      let recognition: any = null;
+      let listening = false;
+      document.getElementById('voiceInputBtn')?.addEventListener('click', () => {
+        const micBtn = document.getElementById('voiceInputBtn') as HTMLButtonElement | null;
+        if (!SpeechRec) {
+          appendMessageUI('assistant', '⚠️ La dictée vocale n\'est pas supportée par ce navigateur.', 'Système');
+          return;
+        }
+        if (listening) { recognition?.stop(); return; }
+        try {
+          recognition = new SpeechRec();
+          recognition.lang = 'fr-FR';
+          recognition.interimResults = false;
+          recognition.continuous = false;
+          recognition.onstart = () => { listening = true; if (micBtn) { micBtn.textContent = '🔴'; micBtn.classList.add('text-red-400'); } };
+          recognition.onend = () => { listening = false; if (micBtn) { micBtn.textContent = '🎤'; micBtn.classList.remove('text-red-400'); } };
+          recognition.onerror = () => { listening = false; if (micBtn) { micBtn.textContent = '🎤'; micBtn.classList.remove('text-red-400'); } };
+          recognition.onresult = (e: any) => {
+            const said = Array.from(e.results).map((r: any) => r[0].transcript).join(' ').trim();
+            if (said && promptInput) {
+              promptInput.value = (promptInput.value ? promptInput.value + ' ' : '') + said;
+              promptInput.focus();
+              promptInput.dispatchEvent(new Event('input'));
+            }
+          };
+          recognition.start();
+        } catch { listening = false; }
+      });
+
+      // ⚡ Prompts rapides — un clic préremplit le champ (exclusivité GD4)
+      document.getElementById('quickPrompts')?.addEventListener('click', (e) => {
+        const chip = (e.target as HTMLElement).closest<HTMLButtonElement>('.quick-prompt-chip');
+        if (!chip || !promptInput) return;
+        promptInput.value = chip.dataset.prompt || '';
+        promptInput.focus();
+      });
+
+      // 🧮 Compteur live : caractères + tokens estimés (≈ 1 token / 4 caractères)
+      promptInput?.addEventListener('input', () => {
+        const counter = document.getElementById('promptCounter');
+        if (!counter || !promptInput) return;
+        const len = promptInput.value.length;
+        counter.textContent = len ? `~${Math.max(1, Math.ceil(len / 4))} tokens · ${len} car.` : '';
+      });
+
+      // 📊 Statistiques d'usage locales (réinitialisées chaque jour)
+      function bumpUsage(addMessage: boolean, inputTokens = 0, outputTokens = 0): void {
+        try {
+          const today = new Date().toISOString().slice(0, 10);
+          const raw = JSON.parse(localStorage.getItem('gd4_usage_stats') || 'null');
+          const s = (raw && raw.day === today) ? raw : { day: today, messages: 0, inputTokens: 0, outputTokens: 0 };
+          if (addMessage) s.messages += 1;
+          s.inputTokens += inputTokens;
+          s.outputTokens += outputTokens;
+          localStorage.setItem('gd4_usage_stats', JSON.stringify(s));
+        } catch { /* ignore */ }
+      }
+
+      // ⬇️ EXPORT MARKDOWN de la conversation active (doc de projet, partage)
+      document.getElementById('exportMdBtn')?.addEventListener('click', () => {
+        const chats = getChats(currentUserId);
+        const chat = (currentChatId ? chats.find((c: Chat) => c.id === currentChatId) : undefined) || chats[0];
+        if (!chat || !chat.messages?.length) {
+          appendMessageUI('assistant', '⚠️ Aucune conversation à exporter.', 'Système');
+          return;
+        }
+        const lines: string[] = [`# ${chat.title}`, '', `_Exporté depuis GD4 Assistant le ${new Date().toLocaleString('fr-FR')}_`, ''];
+        for (const m of chat.messages) {
+          lines.push(m.role === 'user' ? `## 🧑 Développeur\n\n${m.text}\n` : `## 🤖 Assistant\n\n${m.text}\n`);
+        }
+        const blob = new Blob([lines.join('\n')], { type: 'text/markdown;charset=utf-8' });
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(blob);
+        a.download = `${(chat.title || 'conversation').replace(/[^\w\- àâäéèêëîïôöùûüç]+/gi, '').slice(0, 60)}.md`;
+        a.click();
+        URL.revokeObjectURL(a.href);
+        appendMessageUI('assistant', '⬇️ Conversation exportée en Markdown (.md).', 'Système');
+      });
+
+      // 📜 JOURNAL des actions appliquées — la mémoire du modèle rendue VISIBLE
+      // (nouveauté exclusive : le dev voit exactement ce que l'IA retient)
+      document.getElementById('actionLogBtn')?.addEventListener('click', () => {
+        const log = getProjectMemory(currentUserId).actionLog || [];
+        if (!log.length) {
+          appendMessageUI('assistant', '📜 Journal vide : aucune action Godot appliquée pour le moment.\nLes actions (create_node, create_script…) s\'enregistreront ici automatiquement à chaque génération.', '📜 Journal');
+          return;
+        }
+        const lines = ['📜 Journal des actions appliquées dans Godot (ce que le modèle retient) :', '', ...log.slice(-60).reverse().map((l) => '• ' + l)];
+        appendMessageUI('assistant', lines.join('\n'), '📜 Journal');
+      });
+
+      // 📊 Panneau de stats (bouton header)
+      document.getElementById('statsBtn')?.addEventListener('click', () => {
+        const today = new Date().toISOString().slice(0, 10);
+        let s: any = { day: today, messages: 0, inputTokens: 0, outputTokens: 0 };
+        try { const raw = JSON.parse(localStorage.getItem('gd4_usage_stats') || 'null'); if (raw && raw.day === today) s = raw; } catch { /* ignore */ }
+        appendMessageUI('assistant', `📊 Usage du jour :\n• ${s.messages} message(s) envoyé(s)\n• ~${Number(s.inputTokens).toLocaleString('fr-FR')} tokens input estimés\n• ~${Number(s.outputTokens).toLocaleString('fr-FR')} tokens output estimés\n(remis à zéro chaque jour)`, '📊 Stats');
+      });
+
+      // 🔊 Lire une réponse à voix haute (synthèse vocale) — nouveauté GD4
+      document.addEventListener('click', (e) => {
+        const speakBtn = (e.target as HTMLElement).closest<HTMLButtonElement>('.speak-btn');
+        if (!speakBtn) return;
+        const bubble = speakBtn.closest('div')?.parentElement?.querySelector('.message-content') as HTMLElement | null;
+        const text = bubble?.textContent || '';
+        if (!text) return;
+        try {
+          if (speechSynthesis.speaking) { speechSynthesis.cancel(); speakBtn.textContent = '🔊'; return; }
+          const utterance = new SpeechSynthesisUtterance(text);
+          utterance.lang = 'fr-FR';
+          utterance.onend = () => { speakBtn.textContent = '🔊'; };
+          speakBtn.textContent = '⏹';
+          speechSynthesis.speak(utterance);
+        } catch { /* ignore */ }
+      });
+
+      // ⌨️ Raccourcis clavier — Ctrl/⌘+K nouvelle conversation · Ctrl+J journal · Ctrl+E export
+      document.addEventListener('keydown', (e) => {
+        if (!(e.ctrlKey || e.metaKey)) return;
+        const key = e.key.toLowerCase();
+        if (key === 'k') {
+          e.preventDefault();
+          window.dispatchEvent(new CustomEvent('new-chat'));
+        } else if (key === 'j') {
+          e.preventDefault();
+          document.getElementById('actionLogBtn')?.click();
+        } else if (key === 'e') {
+          e.preventDefault();
+          document.getElementById('exportMdBtn')?.click();
+        }
+      });
+
+      // 📦 EXPORT GLOBAL : toutes les conversations du compte en un seul Markdown
+      document.getElementById('exportAllBtn')?.addEventListener('click', () => {
+        const chats = getChats(currentUserId);
+        if (!chats.length) {
+          appendMessageUI('assistant', '⚠️ Aucune conversation à exporter.', 'Système');
+          return;
+        }
+        const parts: string[] = [`# GD4 Assistant — Export global (${chats.length} conversation(s))`, ''];
+        for (const chat of chats) {
+          parts.push(`\n---\n\n# ${chat.title}\n`);
+          for (const m of chat.messages || []) {
+            parts.push(m.role === 'user' ? `**🧑 Développeur :** ${m.text}\n` : `**🤖 Assistant :** ${m.text}\n`);
+          }
+        }
+        const blob = new Blob([parts.join('\n')], { type: 'text/markdown;charset=utf-8' });
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(blob);
+        a.download = `gd4_export_complet_${new Date().toISOString().slice(0, 10)}.md`;
+        a.click();
+        URL.revokeObjectURL(a.href);
+        appendMessageUI('assistant', `📦 ${chats.length} conversation(s) exportée(s) en un seul Markdown.`, 'Système');
+      });
+
+      upgradeHeaderBtn?.addEventListener('click', () => {
+        window.dispatchEvent(new CustomEvent('open-pricing'));
+        window.dispatchEvent(new CustomEvent('open-pricing-modal'));
+      });
+
+      // ============================================================
+      // ENVOI DU FORMULAIRE — bouton "Envoyer" ou Entrée
+      // ============================================================
+      chatForm?.addEventListener('submit', async (e: Event) => {
+        e.preventDefault();
+        if (!promptInput || !ws) return;
+        if (ws.readyState !== WebSocket.OPEN) {
+          appendMessageUI('assistant', '⚠️ Relais hors ligne — impossible d\'envoyer ta question.', 'Système');
+          return;
+        }
+        const prompt = promptInput.value.trim();
+        if (!prompt) return;
+        promptInput.value = '';
+        const modelKey = modelSelect?.value === 'auto' ? determineAutoModel(prompt) : (modelSelect?.value || 'groq');
+        const fileContext = buildProjectContext(undefined, modelKey);
+        const fullPrompt = prompt + fileContext;
+        // QUOTA JUSTE : on consomme les tokens INPUT estimés du prompt
+        // (≈ 1 token pour 4 caractères) AVANT l'appel, pas un forfait « 1 ».
+        const estInputTokens = Math.max(1, Math.ceil(fullPrompt.length / 4));
+      bumpUsage(true, estInputTokens, 0);
+        // Vérifier le quota avant d'envoyer
+        const quota = await checkTokenQuota(currentUserId, estInputTokens, 0).catch(() => ({ ok: true }));
+        updateTokenQuotaDisplay();
+        if (!quota.ok) {
+          appendMessageUI('assistant', '⚠️ Tokens limités atteints. La limite se réinitialise dans 8 heures.', 'Système');
+          return;
+        }
+        rememberProjectConversation('user', prompt, modelKey);
+        // Affiche le message utilisateur + ENREGISTREMENT de la conversation
+        appendMessageUI('user', prompt);
+        void saveMessageToStorage('user', prompt, modelKey);
+
+        // ⏳ Animation d'attente + identifiant unique (sert à lier les actions
+        // envoyées au dock Godot et à retirer l'animation).
+        const requestId = 'app_' + Date.now() + '_' + Math.random().toString(36).slice(2, 8);
+        const typing = appendMessageUI('assistant', '<i>⏳ Réflexion et génération en cours...</i>', '⏳ En cours');
+        pendingAppRequests.set(requestId, typing);
+
+        // 🧠 L'APPEL IA SE FAIT ICI, DIRECTEMENT DANS L'APP (le seul cerveau) :
+        // la question ne part JAMAIS au plugin. Seules les ACTIONS éventuelles
+        // sont envoyées au dock Godot (request_id app_ → jamais affichées comme
+        // conversation dans le dock, elles s'appliquent juste à la scène).
+        try {
+          const result = await callGemini(modelKey, fullPrompt, currentScreenshot, currentScreenshotMime);
+          typing.remove();
+          pendingAppRequests.delete(requestId);
+          const actions = Array.isArray(result.actions) ? result.actions : [];
+          let txt = String(result.explanation || '');
+          if (actions.length) txt += `\n\n✅ ${actions.length} action(s) appliquée(s) dans Godot.`;
+          // QUOTA JUSTE : on décompte aussi les tokens OUTPUT estimés de la
+          // réponse (≈ 1 token pour 4 caractères). Silencieux : ne bloque jamais.
+          const estOutputTokens = Math.max(1, Math.ceil(txt.length / 4));
+          void consumeTokenQuotaRemote(0, estOutputTokens, QUOTA_WINDOW_HOURS, DEFAULT_INPUT_TOKENS, DEFAULT_OUTPUT_TOKENS)
+            .then(() => { void refreshTokenQuotaDisplay(); });
+          bumpUsage(false, 0, estOutputTokens);
+          playChime();
+          // 🧠 MÉMOIRE : le modèle doit savoir ce qui a DÉJÀ été créé dans la
+          // scène pour CONTINUER le jeu au lieu de tout refaire.
+          if (actions.length) recordProjectActions(currentUserId, modelKey, actions);
+          const bubble = appendMessageUI('assistant', '', selectedModelName(modelKey));
+          const content = bubble.querySelector('.message-content');
+          if (content) content.textContent = txt;
+          void saveMessageToStorage('assistant', txt, modelKey);
+          rememberProjectConversation('assistant', String(result.explanation || ''), modelKey);
+          // ✅ La réponse part TOUJOURS vers le relais → plugin Godot,
+          // même sans actions (sinon le plugin ne reçoit rien en conversation normale).
+          if (ws.readyState === WebSocket.OPEN) {
+            ws.send(JSON.stringify({
+              type: "ai_result",
+              request_id: requestId,
+              explanation: String(result.explanation || ''),
+              actions: actions,
+              model: selectedModelName(modelKey),
+            }));
+          } else {
+            console.warn('[GD4] Relais fermé : réponse IA non transmise au plugin.');
+          }
+        } catch (err: any) {
+          typing.remove();
+          pendingAppRequests.delete(requestId);
+          appendMessageUI('assistant', `⚠️ Erreur : ${err?.message || err}`, 'Système');
+        }
+        currentScreenshot = null;
+        currentScreenshotMime = 'image/png';
+        attachBadge?.classList.add('hidden');
+      });
+
+      // Même logique au appui sur Entrée dans le champ texte
+      promptInput?.addEventListener('keydown', (e: KeyboardEvent) => {
+        if (e.key === 'Enter' && !e.shiftKey) {
+          e.preventDefault();
+          chatForm?.dispatchEvent(new Event('submit'));
+        }
+      });
+
+      // Algorithme de détection pour le Mode Auto
+      // ⚡ GROQ (Qwen 3.8 27B) — cerveau par défaut de l'application.
+      function determineAutoModel(_promptText: string): string {
+        // Mode Auto : utilise le modèle préféré choisi dans les Paramètres
+        // (« Modèles IA »). Pour l'instant, seul Qwen 3.8 27B est disponible.
+        try {
+          const preferred = localStorage.getItem('gd4_selected_model');
+          if (preferred === 'groq') return preferred;
+        } catch { /* ignore */ }
+        return 'groq';
+      }
+
+      // ⚙️ SYNCHRO MODÈLE : le choix des Paramètres (« Modèles IA ») pilote le
+      // sélecteur du header — et inversement (une seule source de vérité).
+      const VALID_MODEL_KEYS = ['auto', 'groq'];
+      (function syncModelSelection() {
+        try {
+          const saved = localStorage.getItem('gd4_selected_model');
+          if (saved && VALID_MODEL_KEYS.includes(saved) && modelSelect) modelSelect.value = saved;
+          modelSelect?.addEventListener('change', () => {
+            try { localStorage.setItem('gd4_selected_model', modelSelect.value); } catch { /* ignore */ }
+          });
+          window.addEventListener('gd4-model-changed', (e: any) => {
+            const value = String(e?.detail?.model || '');
+            if (VALID_MODEL_KEYS.includes(value) && modelSelect) modelSelect.value = value;
+          });
+        } catch { /* ignore */ }
+      })();
+
+      // Nom lisible du modèle pour l'affichage dans le chat
+      function selectedModelName(_key: string): string {
+        return '⚡ Qwen 3.8 27B';
+      }
+
+      // ============================================================
+      // HISTORIQUE DES CONVERSATIONS — espace du compte courant
+      // ============================================================
+      function resetChatView() {
+        currentChatId = null;
+        setActiveChatId(null, currentUserId);
+        if (messagesList) { messagesList.innerHTML = ''; messagesList.classList.add('hidden'); }
+        if (welcomeView) welcomeView.classList.remove('hidden');
+        if (chatContainer) chatContainer.classList.add('justify-center');
+        if (promptInput) { promptInput.value = ''; promptInput.focus(); }
+      }
+
+      function tryRestoreActiveChat() {
+        const activeId = getActiveChatId(currentUserId);
+        const chat = activeId ? getChats(currentUserId).find((c: Chat) => c.id === activeId) : undefined;
+        if (chat) window.dispatchEvent(new CustomEvent('select-chat', { detail: { id: chat.id } }));
+      }
+
+      // Restauration différée : attend la fin de la synchro cloud/migration
+      // (signifiée par l'événement 'chats-updated') avant de rouvrir la conversation active.
+      let pendingRestoreAfterSync = false;
+
+      window.addEventListener('new-chat', resetChatView);
+
+      window.addEventListener('chats-updated', () => {
+        updateTokenQuotaDisplay();
+        if (pendingRestoreAfterSync && !currentChatId) {
+          pendingRestoreAfterSync = false;
+          tryRestoreActiveChat();
+        }
+      });
+
+      // Connexion / déconnexion / changement de compte (émis par la Sidebar)
+      window.addEventListener('gd4-auth-changed', (e: any) => {
+        const user = e.detail?.user;
+        const previousUserId = currentUserId;
+        currentUserId = user?.id ?? null;
+        currentUserEmail = user?.email || 'anonyme';
+        currentScreenshot = null;
+        currentScreenshotMime = 'image/png';
+        attachBadge?.classList.add('hidden');
+
+        if (previousUserId !== currentUserId) {
+          resetChatView();                    // espace de données différent → vue vierge
+          pendingRestoreAfterSync = !!user;   // puis restauration après synchro
+          pluginChatId = null;                // la session plugin redémarre dans le nouvel espace
+          updateTokenQuotaDisplay();
+          void refreshTokenQuotaDisplay();      // quota réel du nouveau compte (serveur)
+        }
+      });
+
+      window.addEventListener('select-chat', (e: any) => {
+        const chatId = e.detail?.id;
+        if (!chatId) return;
+        const chats = getChats(currentUserId);
+        const chat = chats.find((c: Chat) => c.id === chatId);
+        if (chat && messagesList) {
+          currentChatId = chat.id;
+          setActiveChatId(chat.id, currentUserId);
+          messagesList.innerHTML = '';
+          if (welcomeView) welcomeView.classList.add('hidden');
+          chatContainer?.classList.remove('justify-center');
+          messagesList.classList.remove('hidden');
+          chat.messages.forEach((m: ChatMessage) => appendMessageUI(m.role, m.text, m.modelName));
+        }
+      });
+
+      // ============================================================
+      // AFFICHAGE DES MESSAGES
+      // ============================================================
+      function appendMessageUI(role: 'user' | 'assistant', text: string, modelName = '') {
+        // NORMALISATION : bulles affichées avec les clés brutes
+        // ('groq'/'nvidia'/'cloudflare'/'auto') au lieu du nom lisible —
+        // ici on reconvertit systématiquement en nom lisible AVANT affichage.
+        const displayName = ['auto', 'groq', 'nvidia', 'cloudflare'].includes(modelName)
+          ? selectedModelName(modelName)
+          : modelName;
+        if (welcomeView && !welcomeView.classList.contains('hidden')) {
+          welcomeView.classList.add('hidden');
+          chatContainer?.classList.remove('justify-center');
+          messagesList?.classList.remove('hidden');
+        }
+
+        const msgDiv = document.createElement('div');
+        msgDiv.className = `p-4 rounded-2xl text-xs md:text-sm max-w-2xl leading-relaxed relative group ${
+          role === 'user'
+            ? 'bg-cyan-950/40 border border-cyan-800/50 text-slate-100 ml-auto'
+            : 'bg-[#16181c] border border-slate-800 text-slate-200 mr-auto shadow-lg'
+        }`;
+
+        if (role === 'assistant') {
+          msgDiv.innerHTML = `
+            <div class="flex items-center justify-between mb-2 pb-1.5 border-b border-slate-800/80 text-[10px] font-mono text-cyan-400">
+              <span>🤖 Modèle actif : ${displayName}</span>
+            </div>
+            <div class="message-content whitespace-pre-wrap font-sans">${text}</div>
+
+            <div class="flex items-center gap-1.5 pt-3 mt-2 border-t border-slate-800/60 text-slate-400">
+              <button type="button" class="copy-btn hover:text-cyan-400 p-1.5 rounded-lg hover:bg-slate-800 transition flex items-center gap-1 cursor-pointer" title="Copier la réponse">
+                <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                </svg>
+                <span class="copy-label text-[10px]">Copier</span>
+              </button>
+
+              <button type="button" class="speak-btn hover:text-cyan-400 p-1.5 rounded-lg hover:bg-slate-800 transition cursor-pointer text-xs" title="Lire la réponse à voix haute">🔊</button>
+
+              <button type="button" class="like-btn hover:text-emerald-400 p-1.5 rounded-lg hover:bg-slate-800 transition cursor-pointer" title="Bonne réponse">
+                <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14 10h4.764a2 2 0 011.789 2.894l-3.5 7A2 2 0 0115.263 21h-4.017c-.163 0-.326-.02-.485-.06L7 20m7-10V5a2 2 0 00-2-2h-.095c-.5 0-.905.405-.905.905 0 .714-.211 1.412-.608 2.006L7 11v9m7-10h-2M7 20H5a2 2 0 01-2-2v-6a2 2 0 012-2h2" />
+                </svg>
+              </button>
+
+              <button type="button" class="dislike-btn hover:text-rose-400 p-1.5 rounded-lg hover:bg-slate-800 transition cursor-pointer" title="Mauvaise réponse">
+                <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 14H5.236a2 2 0 01-1.789-2.894l3.5-7A2 2 0 018.736 3h4.018c.163 0 .326.02.485.06L17 4m-7 10v5a2 2 0 002 2h.095c.5 0 .905-.405.905-.905 0-.714.211-1.412.608-2.006L17 13V4m-7 10h2m5-6h2a2 2 0 012 2v6a2 2 0 01-2 2h-2" />
+                </svg>
+              </button>
+            </div>
+          `;
+        } else {
+          msgDiv.innerHTML = `
+            <div class="message-content whitespace-pre-wrap font-sans">${text}</div>
+
+            <div class="flex items-center gap-1.5 pt-2 mt-2 border-t border-cyan-800/40 text-cyan-400/80 justify-end">
+              <button type="button" class="edit-btn hover:text-cyan-200 p-1 rounded-lg hover:bg-cyan-900/40 transition flex items-center gap-1 cursor-pointer" title="Modifier le prompt">
+                <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                </svg>
+                <span class="text-[10px]">Modifier</span>
+              </button>
+
+              <button type="button" class="copy-btn hover:text-cyan-200 p-1 rounded-lg hover:bg-cyan-900/40 transition flex items-center gap-1 cursor-pointer" title="Copier le prompt">
+                <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                </svg>
+              </button>
+            </div>
+          `;
+        }
+
+        const contentDiv = msgDiv.querySelector('.message-content');
+        const copyBtn = msgDiv.querySelector('.copy-btn');
+        const copyLabel = msgDiv.querySelector('.copy-label');
+        const editBtn = msgDiv.querySelector('.edit-btn');
+        const likeBtn = msgDiv.querySelector('.like-btn');
+        const dislikeBtn = msgDiv.querySelector('.dislike-btn');
+
+        copyBtn?.addEventListener('click', () => {
+          if (contentDiv) {
+            navigator.clipboard.writeText(contentDiv.textContent || '');
+            if (copyLabel) copyLabel.textContent = 'Copié !';
+            setTimeout(() => { if (copyLabel) copyLabel.textContent = 'Copier'; }, 2000);
+          }
+        });
+
+        editBtn?.addEventListener('click', () => {
+          if (contentDiv && promptInput) {
+            promptInput.value = contentDiv.textContent || '';
+            promptInput.focus();
+          }
+        });
+
+        likeBtn?.addEventListener('click', () => {
+          likeBtn.classList.toggle('text-emerald-400');
+          dislikeBtn?.classList.remove('text-rose-400');
+        });
+
+        dislikeBtn?.addEventListener('click', () => {
+          dislikeBtn.classList.toggle('text-rose-400');
+          likeBtn?.classList.remove('text-emerald-400');
+        });
+
+        messagesList?.appendChild(msgDiv);
+        chatContainer?.scrollTo({ top: chatContainer.scrollHeight, behavior: 'smooth' });
+        return msgDiv;
+      }
+
+      function appendScreenshotUI(base64: string, mime: string, label: string): void {
+        if (!messagesList || !base64) return;
+        if (welcomeView && !welcomeView.classList.contains('hidden')) {
+          welcomeView.classList.add('hidden');
+          chatContainer?.classList.remove('justify-center');
+          messagesList.classList.remove('hidden');
+        }
+
+        const wrapper = document.createElement('div');
+        wrapper.className = 'max-w-2xl mr-auto bg-[#16181c] border border-emerald-900/60 rounded-2xl p-3 shadow-lg';
+        const image = document.createElement('img');
+        image.src = `data:${mime};base64,${base64}`;
+        image.alt = label;
+        image.className = 'block max-w-full max-h-[420px] rounded-xl border border-slate-700/80 object-contain';
+        const caption = document.createElement('div');
+        caption.className = 'text-[10px] text-emerald-300 mt-2';
+        caption.textContent = `📸 ${label} — sera utilisée avec ta prochaine question`;
+        wrapper.append(image, caption);
+        messagesList.appendChild(wrapper);
+        chatContainer?.scrollTo({ top: chatContainer.scrollHeight, behavior: 'smooth' });
+      }
+
+      // ---- Drag & Drop d'images dans le chat ----
+      // Note: chatContainer, messagesList, welcomeView sont déjà déclarés plus haut (lignes ~235-237)
+      const dropHint = document.getElementById('dropHint') as HTMLDivElement | null;
+
+      function handleDropOrFile(file: File) {
+        if (!file || !file.type.startsWith('image/')) return;
+        const reader = new FileReader();
+        reader.onload = async () => {
+          const dataUrl = typeof reader.result === 'string' ? reader.result : '';
+          const b64 = dataUrl.includes(',') ? dataUrl.split(',')[1] : dataUrl;
+          const mime = file.type || 'image/png';
+          
+          if (!b64) return;
+          
+          if (welcomeView && !welcomeView.classList.contains('hidden')) {
+            welcomeView.classList.add('hidden');
+            chatContainer?.classList.remove('justify-center');
+            messagesList?.classList.remove('hidden');
+          }
+          
+          // Affiche l'image dans le chat
+          appendScreenshotUI(b64, mime, `Image glissée (${file.name})`);
+          
+          // Si WebSocket est connecté, prépare l'image pour la prochaine question
+          if (ws && ws.readyState === WebSocket.OPEN) {
+            currentScreenshot = b64;
+            currentScreenshotMime = mime;
+          }
+        };
+        reader.readAsDataURL(file);
+      }
+
+      if (chatContainer) {
+        chatContainer.addEventListener('dragenter', (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          chatContainer.classList.add('drag-over');
+          if (dropHint) dropHint.classList.remove('hidden');
+        });
+
+        chatContainer.addEventListener('dragover', (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          chatContainer.classList.add('drag-over');
+          if (dropHint) dropHint.classList.remove('hidden');
+        });
+
+        chatContainer.addEventListener('dragleave', (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          if (!chatContainer.contains(e.relatedTarget)) {
+            chatContainer.classList.remove('drag-over');
+            if (dropHint) dropHint.classList.add('hidden');
+          }
+        });
+
+        chatContainer.addEventListener('drop', (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          chatContainer.classList.remove('drag-over');
+          if (dropHint) dropHint.classList.add('hidden');
+          
+          const files = e.dataTransfer?.files;
+          if (files && files.length > 0) {
+            for (const file of files) {
+              handleDropOrFile(file);
+            }
+          }
+        });
+      }
+
+      // Empêche le comportement par défaut du navigateur sur toute la page
+      document.addEventListener('dragenter', (e) => {
+        e.preventDefault();
+      });
+      document.addEventListener('dragover', (e) => {
+        e.preventDefault();
+      });
+      document.addEventListener('drop', (e) => {
+        e.preventDefault();
+      });
+
+      async function saveMessageToStorage(role: 'user' | 'assistant', text: string, modelName = '') {
+        const message: ChatMessage = modelName ? { role, text, modelName } : { role, text };
+
+        if (!currentChatId) {
+          currentChatId = 'chat_' + Date.now();
+          setActiveChatId(currentChatId, currentUserId);
+          const newTitle = role === 'user' ? (text.slice(0, 30) + (text.length > 30 ? '...' : '')) : 'Nouvelle conversation';
+          await upsertChat({ id: currentChatId, title: newTitle, messages: [message] }, currentUserId);
+          return;
+        }
+
+        const chats = getChats(currentUserId);
+        const target = chats.find((c: Chat) => c.id === currentChatId);
+        if (target) {
+          target.messages.push(message);
+          await upsertChat(target, currentUserId);
+        } else {
+          // Conversation absente de cet espace (ex. changement de compte) → recréation
+          await upsertChat({ id: currentChatId, title: 'Nouvelle conversation', messages: [message] }, currentUserId);
+        }
+      }
+
+      // ============================================================
+      // CONVERSATIONS DU PLUGIN GODOT → historique de l'APP
+      // Chaque échange plugin devient un chat rattaché au COMPTE qui a
+      // créé le code d'appairage (upsertChat → espace du compte + cloud).
+      // Nouvelle conversation si plus de 2 h d'inactivité (session plugin).
+      // ============================================================
+      const PLUGIN_SESSION_GAP_MS = 2 * 60 * 60 * 1000;
+      let pluginChatId: string | null = null;
+
+      function pluginChatKey(): string {
+        return currentUserId ? `gd4_plugin_chat_id::u:${currentUserId}` : 'gd4_plugin_chat_id';
+      }
+
+      async function savePluginExchange(question: string, answer: string, modelKey: string) {
+        try {
+          if (!pluginChatId) pluginChatId = localStorage.getItem(pluginChatKey());
+          let chat = pluginChatId ? getChats(currentUserId).find((c: Chat) => c.id === pluginChatId) : undefined;
+
+          // Session expirée → nouvelle conversation
+          if (chat && chat.updatedAt && Date.now() - chat.updatedAt > PLUGIN_SESSION_GAP_MS) {
+            chat = undefined;
+          }
+
+          if (!chat) {
+            pluginChatId = 'plug_' + Date.now();
+            localStorage.setItem(pluginChatKey(), pluginChatId);
+            chat = {
+              id: pluginChatId,
+              title: '🔌 ' + question.slice(0, 30) + (question.length > 30 ? '...' : ''),
+              messages: [],
+            };
+          }
+
+          chat.messages.push({ role: 'user', text: question, modelName: '🔌 Plugin Godot' });
+          chat.messages.push({ role: 'assistant', text: answer, modelName: `🔌 Plugin (${modelKey})` });
+          await upsertChat(chat, currentUserId); // compte courant + cloud + événement 'chats-updated'
+        } catch (e: any) {
+          console.warn('[GD4] Sauvegarde de la conversation plugin impossible :', e?.message || e);
+        }
+      }
+
+      /** Import en masse d'un historique envoyé par le plugin (type: "plugin_history"). */
+      async function importPluginHistory(chats: any[]) {
+        let imported = 0;
+        for (const c of chats) {
+          if (!c || !Array.isArray(c.messages) || c.messages.length === 0) continue;
+          const messages: ChatMessage[] = c.messages
+            .filter((m: any) => m && typeof m.text === 'string')
+            .map((m: any) => ({
+              role: m.role === 'assistant' ? 'assistant' : 'user',
+              text: String(m.text),
+              modelName: '🔌 Plugin Godot',
+            }));
+          if (messages.length === 0) continue;
+          const title = typeof c.title === 'string' && c.title.trim()
+            ? '🔌 ' + c.title.trim().slice(0, 40)
+            : '🔌 Conversation plugin';
+          await upsertChat(
+            { id: 'plug_' + Date.now() + '_' + imported, title, messages },
+            currentUserId,
+          );
+          imported++;
+        }
+        if (imported > 0) {
+          console.log(`[GD4] ${imported} conversation(s) du plugin importée(s) dans le compte.`);
+        }
+      }
+
+      // Restaurer le compte au démarrage (session Google existante) puis rouvrir sa conversation active
+      (async () => {
+        const me = await resolveCurrentUser().catch(() => null);
+        if (me && me.id !== currentUserId) {
+          currentUserId = me.id;
+          currentUserEmail = me.email || 'anonyme';
+          currentChatId = getActiveChatId(currentUserId);
+          pendingRestoreAfterSync = true;
+        }
+        void refreshTokenQuotaDisplay();
+        updateTokenQuotaDisplay();
+        if (currentChatId) {
+          window.dispatchEvent(new CustomEvent('select-chat', { detail: { id: currentChatId } }));
+        }
+      })();
+
+      // L'envoi du chat est géré une seule fois ci-dessus (événement 'submit' du formulaire).
+    </script>
+  </body>
+</html>

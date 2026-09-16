@@ -1,0 +1,404 @@
+<section class="pricing-section" id="tarifs">
+    <div class="container">
+        <h2>🚀 Preview gratuite</h2>
+        <p class="subtitle">Pendant la preview, tout est offert : modèle Qwen 3.8 27B, codes promo et quotas généreux.</p>
+
+        <!-- ═══════════ CODE PROMO (partie ABONNEMENT) ═══════════ -->
+        <!-- Le champ où on écrit le code est ICI, dans la partie abonnement. -->
+        <div class="promo-box" id="promoBox">
+            <div class="promo-header">
+                <span class="promo-icon">🎟️</span>
+                <div>
+                    <p class="promo-title">Code promo</p>
+                    <p class="promo-hint">Entre ton code (ex : GD4-WELCOME) pour augmenter tes quotas de tokens.</p>
+                </div>
+            </div>
+            <div class="promo-row">
+                <input id="promoCodeInput" type="text" placeholder="GD4-XXXX" autocomplete="off" spellcheck="false" maxlength="32" />
+                <button id="promoApplyBtn" type="button">Appliquer</button>
+            </div>
+            <p id="promoMessage" class="promo-message" aria-live="polite"></p>
+        </div>
+
+        <div class="pricing-grid">
+            <!-- Plan gratuit Preview — toute l'app est offerte pendant la preview -->
+            <div class="price-card featured">
+                <div class="popular-tag">🚀 Preview gratuite</div>
+                <h3>Preview — 100 % gratuit</h3>
+                <div class="price">0 € <span>pour toujours en preview</span></div>
+                <div class="factor-badge active">Tout illimité</div>
+
+                <div class="collapsible-content collapsed">
+                    <ul class="features">
+                        <li>⚡ <strong>Qwen 3.8 27B</strong> : le seul modèle actif, sans restriction</li>
+                        <li>✓ Discussions IA complètes avec Godot 4</li>
+                        <li>✓ Vision sur captures d'écran</li>
+                        <li>✓ Codes promo pour augmenter les quotas de tokens</li>
+                        <li>✓ Quota gratuit réinitialisé toutes les 8h</li>
+                        <li>✓ Mémoire projet, export Markdown, historique persistant</li>
+                        <li>📦 Inclusions Détaillées</li>
+                        <li>Volume de calcul : quota de base réinitialisé toutes les 8h à 00:00, 08:00 et 16:00 UTC.</li>
+                        <li>Accès illimité aux fonctionnalités du plugin Godot 4</li>
+                        <li>👥 Public Cible & Cas d'Usage</li>
+                        <li>Étudiants et développeurs créant leur jeu Godot 4 pendant la preview.</li>
+                        <li>Développeurs souhaitant générer, analyser et corriger du GDScript sans payer.</li>
+                    </ul>
+                </div>
+                <button type="button" class="toggle-btn">Voir plus ▼</button>
+
+                <button class="plan-btn primary" data-scroll-chat>Utiliser gratuitement</button>
+            </div>
+
+            <!-- Plan 2 - Bonus par codes promo -->
+            <div class="price-card">
+                <h3>Bonus — codes promo</h3>
+                <div class="price">Gratuit</div>
+                <div class="factor-badge">Selon ton code</div>
+
+                <div class="collapsible-content collapsed">
+                    <ul class="features">
+                        <li>🎟️ Entre un code promo dans la boîte ci-dessus</li>
+                        <li>✓ Augmente ton quota de tokens input et output</li>
+                        <li>✓ Fonctionne aussi hors connexion (mode local)</li>
+                        <li>📦 Inclusions Détaillées</li>
+                        <li>Exemples : GD4-WELCOME.</li>
+                        <li>Chaque code précise son bonus et sa limite d'utilisation.</li>
+                    </ul>
+                </div>
+                <button type="button" class="toggle-btn">Voir plus ▼</button>
+
+                <button class="plan-btn secondary" data-focus-promo>Utiliser un code</button>
+            </div>
+
+            <!-- Tous les abonnements sont désactivés pendant la preview : tout est gratuit. -->
+            <!-- Les plans payants seront réactivés après la preview. -->
+
+        </div>
+    </div>
+</section>
+
+<script>
+    function initPricingSection() {
+        if ((window as any).__gd4PricingInit) return;
+        (window as any).__gd4PricingInit = true;
+        const toggleButtons = document.querySelectorAll('.toggle-btn');
+        toggleButtons.forEach((btn) => {
+            btn.addEventListener('click', () => {
+                const content = btn.previousElementSibling;
+                if (content && content.classList.contains('collapsible-content')) {
+                    const isCollapsed = content.classList.toggle('collapsed');
+                    btn.textContent = isCollapsed ? 'Voir plus ▼' : 'Voir moins ▲';
+                }
+            });
+        });
+
+        // Calculateur dynamique pour le Plan Entreprise
+        const seatInput = document.getElementById('seat-count') as HTMLInputElement | null;
+        const totalPriceEl = document.getElementById('total-price');
+        const perSeatPriceEl = document.getElementById('per-seat-price');
+        const totalFactorEl = document.getElementById('total-factor');
+        const BASE_PRICE_PER_SEAT = 240;
+        const BASE_FACTOR_PER_SEAT = 60;
+        function updateEnterprisePrice() {
+            if (!seatInput || !totalPriceEl || !perSeatPriceEl || !totalFactorEl) return;
+            let seats = parseInt(seatInput.value, 10);
+            if (isNaN(seats) || seats < 1) seats = 1;
+            const totalPrice = seats * BASE_PRICE_PER_SEAT;
+            const totalFactor = seats * BASE_FACTOR_PER_SEAT;
+            totalPriceEl.innerHTML = `${totalPrice.toLocaleString('fr-FR')} € <span>/ mois</span>`;
+            perSeatPriceEl.textContent = `${BASE_PRICE_PER_SEAT} € / utilisateur par mois (${seats} siège${seats > 1 ? 's' : ''})`;
+            totalFactorEl.textContent = `Facteur ${totalFactor}x global`;
+        }
+        if (seatInput) {
+            seatInput.addEventListener('input', updateEnterprisePrice);
+            seatInput.addEventListener('change', updateEnterprisePrice);
+        }
+
+        // Boutons des cartes preview gratuites : aucune souscription.
+        document.querySelectorAll('[data-scroll-chat]').forEach((btn) => {
+            btn.addEventListener('click', () => {
+                const input = document.getElementById('promptInput');
+                if (input) { input.scrollIntoView({ behavior: 'smooth', block: 'center' }); (input as HTMLTextAreaElement).focus(); }
+                else window.scrollTo({ top: 0, behavior: 'smooth' });
+            });
+        });
+        document.querySelectorAll('[data-focus-promo]').forEach((btn) => {
+            btn.addEventListener('click', () => {
+                const input = document.getElementById('promoCodeInput') as HTMLInputElement | null;
+                if (input) { input.scrollIntoView({ behavior: 'smooth', block: 'center' }); input.focus(); }
+            });
+        });
+        // ⚠️ initPromoBox() est défini dans le <script> SUIVANT : Astro compile
+        // chaque <script> en MODULE SÉPARÉ, donc l'appeler ici lève
+        // « initPromoBox is not defined » et empêchait la liaison du bouton
+        // « Appliquer ». Le 2ᵉ script s'auto-initialise : simple appel défensif.
+        (window as any).__gd4InitPromoBox?.();
+    }
+    document.addEventListener('DOMContentLoaded', initPricingSection);
+    initPricingSection();
+    window.addEventListener('open-pricing', () => initPricingSection());
+</script>
+
+<script>
+    // CODE PROMO — fonctionnel, dans la partie ABONNEMENT.
+    // AUCUN import ici (sinon Vite plante la page entière) : on utilise
+    // le client Supabase exposé par index.astro (window.supabase),
+    // sinon repli sur le cache local gd4_user_session.
+    function initPromoBox() {
+        const promoInput = document.getElementById('promoCodeInput') as HTMLInputElement | null;
+        const promoBtn = document.getElementById('promoApplyBtn') as HTMLButtonElement | null;
+        const promoMsg = document.getElementById('promoMessage') as HTMLParagraphElement | null;
+        if (!promoInput || !promoBtn || (promoBtn as any).__gd4Bound) return;
+        (promoBtn as any).__gd4Bound = true;
+        const setMsg = (text: string, kind: string) => {
+            if (!promoMsg) return;
+            promoMsg.textContent = text;
+            promoMsg.classList.remove('ok', 'err');
+            if (kind) promoMsg.classList.add(kind);
+        };
+        const getUserId = async (): Promise<string | null> => {
+            try {
+                const w = window as any;
+                if (w.supabase?.auth?.getSession) {
+                    const { data } = await w.supabase.auth.getSession();
+                    if (data?.session?.user?.id) return String(data.session.user.id);
+                }
+            } catch { /* repli cache */ }
+            try {
+                const raw = localStorage.getItem('gd4_user_session');
+                if (raw && JSON.parse(raw)?.id) return String(JSON.parse(raw).id);
+            } catch { /* ignore */ }
+            return null;
+        };
+        // 🎟️ REPLI LOCAL : applique le bonus au quota du navigateur quand le
+        // cloud n'est pas prêt (migration 003 absente) ou en session locale.
+        const applyPromoLocal = async (code: string): Promise<{ ok: boolean; message: string }> => {
+            try {
+                const usedRaw = JSON.parse(localStorage.getItem('gd4_local_promo_uses') || '{}');
+                if (usedRaw[code]) return { ok: false, message: 'Tu as déjà utilisé ce code (mode local).' };
+                const pub = await fetch('/api/promo-codes').then((r) => r.json()).catch(() => null);
+                const def = pub?.promo_codes?.[code];
+                const bonusInput = Number(def?.increase_input_tokens) || 0;
+                const bonusOutput = Number(def?.increase_output_tokens) || 0;
+                if (!def || (bonusInput === 0 && bonusOutput === 0)) return { ok: false, message: 'Code promo invalide.' };
+                usedRaw[code] = new Date().toISOString();
+                localStorage.setItem('gd4_local_promo_uses', JSON.stringify(usedRaw));
+                const cur = JSON.parse(localStorage.getItem('gd4_local_promo_bonus') || '{"input":0,"output":0}');
+                const next = { input: (Number(cur.input) || 0) + bonusInput, output: (Number(cur.output) || 0) + bonusOutput };
+                localStorage.setItem('gd4_local_promo_bonus', JSON.stringify(next));
+                return { ok: true, message: `Code ${code} appliqué (mode local) ! Bonus : +${bonusInput.toLocaleString('fr-FR')} in · +${bonusOutput.toLocaleString('fr-FR')} out. 💡 Connecte-toi (onglet Compte) pour que le bonus soit aussi enregistré dans le cloud.` };
+            } catch (e: any) {
+                return { ok: false, message: 'Erreur repli local : ' + (e?.message || e) };
+            }
+        };
+        const applyPromo = async () => {
+            const code = (promoInput.value || '').trim().toUpperCase();
+            if (!code) { setMsg('Écris ton code promo (ex : GD4-WELCOME).', 'err'); promoInput.focus(); return; }
+            promoBtn.disabled = true;
+            const old = promoBtn.textContent;
+            promoBtn.textContent = '…';
+            setMsg('Vérification du code…', '');
+            try {
+                const userId = await getUserId();
+                // Pas de compte connecté : le cloud exige un vrai UUID Supabase,
+                // mais le bonus LOCAL (quota du navigateur) reste disponible.
+                if (!userId) {
+                    const localRes = await applyPromoLocal(code);
+                    setMsg(localRes.message, localRes.ok ? 'ok' : 'err');
+                    if (localRes.ok) {
+                        promoInput.value = '';
+                        try { window.dispatchEvent(new CustomEvent('gd4-quota-changed')); } catch { /* ignore */ }
+                    }
+                    return;
+                }
+                const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(userId);
+                const res = await fetch('/api/apply-promo', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ code, userId }),
+                });
+                const data = await res.json().catch(() => ({}));
+                if (data?.ok) {
+                    setMsg(data.message || 'Code appliqué ! ✅', 'ok');
+                    promoInput.value = '';
+                    try { window.dispatchEvent(new CustomEvent('gd4-quota-changed')); } catch { /* ignore */ }
+                } else if (!isUuid || (typeof data?.message === 'string' && /Serveur incomplet/i.test(data.message))) {
+                    // Cloud pas encore prêt OU session locale → bonus appliqué localement
+                    const localRes = await applyPromoLocal(code);
+                    setMsg(localRes.message, localRes.ok ? 'ok' : 'err');
+                    if (localRes.ok) {
+                        promoInput.value = '';
+                        try { window.dispatchEvent(new CustomEvent('gd4-quota-changed')); } catch { /* ignore */ }
+                    }
+                } else setMsg(data?.message || 'Code invalide.', 'err');
+            } catch (e: any) { setMsg('Erreur réseau : ' + (e?.message || e), 'err'); }
+            finally { promoBtn.disabled = false; promoBtn.textContent = old; }
+        };
+        promoBtn.addEventListener('click', () => { void applyPromo(); });
+        promoInput.addEventListener('input', () => { promoInput.value = promoInput.value.toUpperCase(); });
+        promoInput.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') { e.preventDefault(); void applyPromo(); }
+        });
+    }
+
+    // ⚠️ Astro compile chaque <script> en MODULE SÉPARÉ : initPromoBox() ne peut
+    // pas être appelé depuis le <script> précédent (ReferenceError qui empêchait
+    // la liaison du bouton). On l'initialise donc ICI, et on le rebranche à chaque
+    // ouverture de la modale — le garde __gd4Bound évite les doubles branchements.
+    (window as any).__gd4InitPromoBox = initPromoBox;
+    initPromoBox();
+    document.addEventListener('DOMContentLoaded', initPromoBox);
+    window.addEventListener('open-pricing', () => initPromoBox());
+</script>
+
+<style>
+    .pricing-section { padding: 4rem 1rem; background-color: #141619; border-top: 1px solid #2d323b; }
+    .container { max-width: 1200px; margin: 0 auto; }
+    h2 { color: #ffffff; border-left: 4px solid #478cbf; padding-left: 10px; font-size: 2rem; margin-bottom: 0.5rem; }
+    .subtitle { color: #a0a0a0; margin-bottom: 2.5rem; }
+    .pricing-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 1.2rem; }
+    .price-card { background: #20252b; border: 1px solid #2d323b; border-radius: 8px; padding: 1.5rem 1.2rem; display: flex; flex-direction: column; position: relative; }
+    .price-card.featured { border: 2px solid #478cbf; background: #1a2026; }
+    .price-card.enterprise-card { border: 1px solid #ffaa00; background: #1c1a16; }
+    .popular-tag { position: absolute; top: -12px; left: 50%; transform: translateX(-50%); background: #478cbf; color: #fff; font-size: 0.7rem; font-weight: bold; padding: 2px 10px; border-radius: 12px; text-transform: uppercase; }
+    h3 { color: #ffffff; margin: 0 0 0.5rem; font-size: 1.1rem; }
+    .price { font-size: 1.5rem; font-weight: bold; color: #ffffff; margin-bottom: 0.2rem; }
+    .price span { font-size: 0.8rem; color: #a0a0a0; font-weight: normal; }
+    
+    /* Styles spécifiques au calculateur du plan Entreprise */
+    .seats-calculator {
+        margin: 0.8rem 0;
+        background: #141619;
+        padding: 0.6rem;
+        border-radius: 6px;
+        border: 1px solid #2d323b;
+    }
+
+    .seats-calculator label {
+        display: block;
+        color: #a0a0a0;
+        font-size: 0.75rem;
+        margin-bottom: 0.4rem;
+        font-weight: 600;
+    }
+
+    .input-wrapper {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+    }
+
+    .seats-calculator input[type="number"] {
+        width: 100%;
+        background: #20252b;
+        border: 1px solid #3d4450;
+        border-radius: 4px;
+        color: #ffffff;
+        padding: 0.4rem 0.6rem;
+        font-size: 0.9rem;
+        font-weight: bold;
+        outline: none;
+        transition: border-color 0.2s ease;
+    }
+
+    .seats-calculator input[type="number"]:focus {
+        border-color: #ffaa00;
+    }
+
+    .seat-unit {
+        color: #a0a0a0;
+        font-size: 0.75rem;
+        white-space: nowrap;
+    }
+
+    .price-box {
+        margin-bottom: 0.5rem;
+    }
+
+    .price-per-seat {
+        font-size: 0.72rem;
+        color: #8899a6;
+        margin-bottom: 0.4rem;
+    }
+
+    .factor-badge { background: #141619; color: #a0a0a0; font-size: 0.75rem; font-weight: bold; padding: 4px 8px; border-radius: 4px; margin-bottom: 1rem; text-align: center; border: 1px solid #2d323b; }
+    .factor-badge.active { color: #478cbf; border-color: #478cbf; }
+    .factor-badge.priority { color: #ffaa00; border-color: #ffaa00; }
+    /* ══ CODE PROMO (partie ABONNEMENT — champ où on écrit le code) ══ */
+    .promo-box { max-width: 640px; margin: 0 auto 2rem; background: #16191d; border: 1px solid #2d323b; border-radius: 12px; padding: 1.1rem 1.2rem; }
+    .promo-header { display: flex; align-items: center; gap: 12px; margin-bottom: 0.8rem; }
+    .promo-icon { font-size: 1.6rem; }
+    .promo-title { color: #fff; font-weight: bold; font-size: 1rem; margin: 0; }
+    .promo-hint { color: #a0a0a0; font-size: 0.8rem; margin: 2px 0 0; }
+    .promo-row { display: flex; gap: 8px; }
+    .promo-row input { flex: 1; background: #20252b; border: 1px solid #3d4450; border-radius: 8px; color: #fff; padding: 0.65rem 0.8rem; font-size: 0.9rem; font-weight: bold; letter-spacing: 1px; text-transform: uppercase; outline: none; }
+    .promo-row input:focus { border-color: #478cbf; }
+    .promo-row button { background: #478cbf; color: #fff; border: none; border-radius: 8px; padding: 0 1.2rem; font-weight: bold; font-size: 0.85rem; cursor: pointer; white-space: nowrap; }
+    .promo-row button:hover { filter: brightness(1.1); }
+    .promo-row button:disabled { opacity: 0.6; cursor: wait; }
+    .promo-message { min-height: 1.2rem; font-size: 0.82rem; margin: 0.6rem 0 0; color: #a0a0a0; }
+    .promo-message.ok { color: #34d399; }
+    .promo-message.err { color: #f87171; }
+    
+    .features { list-style: none; padding: 0; margin: 0; }
+    .features li { color: #cccccc; margin-bottom: 0.6rem; font-size: 0.85rem; }
+
+    /* GESTION DU DEGRADÉ ET REPLIEMENT */
+    .collapsible-content {
+        position: relative;
+        max-height: 1000px;
+        overflow: hidden;
+        transition: max-height 0.3s cubic-bezier(0, 1, 0, 1);
+        flex-grow: 1;
+    }
+
+    .collapsible-content.collapsed {
+        max-height: 110px;
+    }
+
+    .collapsible-content.collapsed::after {
+        content: '';
+        position: absolute;
+        bottom: 0;
+        left: 0;
+        width: 100%;
+        height: 45px;
+        background: linear-gradient(transparent, #20252b);
+        pointer-events: none;
+    }
+
+    .price-card.featured .collapsible-content.collapsed::after {
+        background: linear-gradient(transparent, #1a2026);
+    }
+
+    .price-card.enterprise-card .collapsible-content.collapsed::after {
+        background: linear-gradient(transparent, #1c1a16);
+    }
+
+    /* STYLE DISCRET ET SANS FOND BLANC POUR LE BOUTON */
+    .toggle-btn {
+        background: none !important;
+        border: none !important;
+        outline: none !important;
+        box-shadow: none !important;
+        color: #718096;
+        font-size: 0.78rem;
+        font-weight: 600;
+        cursor: pointer;
+        padding: 0.6rem 0;
+        margin: 0.3rem 0 0.8rem;
+        text-align: center;
+        width: 100%;
+        transition: color 0.2s ease;
+    }
+
+    .toggle-btn:hover {
+        color: #478cbf;
+        text-decoration: underline;
+    }
+
+    .plan-btn { width: 100%; padding: 0.7rem; border-radius: 6px; font-weight: bold; cursor: pointer; border: none; font-size: 0.85rem; }
+    .plan-btn.primary { background: #478cbf; color: #ffffff; }
+    .plan-btn.secondary { background: #2a3038; color: #ffffff; border: 1px solid #3d4450; }
+    .price-card.enterprise-card .plan-btn.primary { background: #ffaa00; color: #141619; }
+</style>

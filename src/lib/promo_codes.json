@@ -1,0 +1,94 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Codes Promo GD4 Assistant",
+  "description": "Codes promo pour augmenter les quotas de tokens (input/output) par période de 8h",
+  "version": "1.0.0",
+  "example": {
+    "GD4-WELCOME": {
+      "description": "Bienvenue — offre de test",
+      "increase_input_tokens": 5000,
+      "increase_output_tokens": 2000,
+      "max_uses": 1,
+      "used_by": []
+    },
+    "GD4-TRIAL-30": {
+      "description": "Essai 30% de tokens supplémentaires",
+      "increase_input_tokens": 5400,
+      "increase_output_tokens": 2100,
+      "max_uses": 999,
+      "used_by": []
+    },
+    "GD4-PRO-1M": {
+      "description": "1 million de tokens supplémentaires (input)",
+      "increase_input_tokens": 1000000,
+      "increase_output_tokens": 0,
+      "max_uses": 1,
+      "used_by": []
+    }
+  },
+  "promo_codes": {
+    "GD4-WELCOME": {
+      "description": "Bienvenue — 5000 input + 2000 output tokens offertes",
+      "increase_input_tokens": 5000,
+      "increase_output_tokens": 2000,
+      "max_uses": 1,
+      "used_by": [],
+      "created_at": "2026-09-08T00:00:00Z",
+      "expires_at": null
+    },
+    "GD4-TRIAL-30": {
+      "description": "Essai 30% de tokens supplémentaires par session",
+      "increase_input_tokens": 5400,
+      "increase_output_tokens": 2100,
+      "max_uses": 999,
+      "used_by": [],
+      "created_at": "2026-09-08T00:00:00Z",
+      "expires_at": null
+    },
+    "GD4-PRO-1M": {
+      "description": "1 million de tokens supplémentaires (input)",
+      "increase_input_tokens": 1000000,
+      "increase_output_tokens": 1000000,
+      "max_uses": 1,
+      "used_by": [],
+      "created_at": "2026-09-08T00:00:00Z",
+      "expires_at": null
+    },
+    "GD4-TESTE": {
+      "description": "Code de test — 10 000 input + 4 000 output tokens offerts",
+      "increase_input_tokens": 10000,
+      "increase_output_tokens": 4000,
+      "max_uses": 9999,
+      "used_by": [],
+      "created_at": "2026-09-12T00:00:00Z",
+      "expires_at": null
+    }
+  },
+  "default_quota": {
+    "input_tokens": 18000,
+    "output_tokens": 7000,
+    "reset_window_hours": 8,
+    "reset_description": "Les quotas se réinitialisent toutes les 8 heures (3 fois par jour)"
+  },
+  "help": {
+    "fields": {
+      "code": "Le code promo unique (ex: GD4-WELCOME, format GD4-XXXX recommandé)",
+      "description": "Description humaine du code promo (affichée à l'utilisateur)",
+      "increase_input_tokens": "Nombre de tokens INPUT supplémentaires offerts (0 = pas de bonus input)",
+      "increase_output_tokens": "Nombre de tokens OUTPUT supplémentaires offerts (0 = pas de bonus output)",
+      "max_uses": "Nombre maximum de fois que ce code peut être utilisé (1 = unique, 999 = illimité pratiquement)",
+      "used_by": " Liste des user_id qui ont déjà utilisé ce code (généré automatiquement)",
+      "created_at": "Date de création du code (format ISO 8601)",
+      "expires_at": "Date d'expiration (null = jamais expire)"
+    },
+    "how_to_add": "1. Copier un exemple depuis la section 'example'\n2. Coller dans 'promo_codes'\n3. Modifier les valeurs\n4. Sauvegarder le fichier\n5. Redémarrer le serveur pour que les changements prennent effet",
+    "how_it_works": "Quand un utilisateur entre un code promo valide :\n1. Le code est vérifié (existe, non expiré, max_uses non atteint)\n2. Les tokens bonus sont ajoutés AUQUEL son quota actuel\n3. Le code est marqué comme utilisé par cet user_id\n4. L'utilisateur voit son nouveau quota affiché",
+    "example_usage": {
+      "user_without_promo": "18000 input tokens + 7000 output tokens par 8h",
+      "user_with_GD4-WELCOME": "23000 input tokens + 9000 output tokens par 8h",
+      "user_with_GD4-TRIAL-30": "23400 input tokens + 9100 output tokens par 8h",
+      "user_with_GD4-TESTE": "28000 input tokens + 11000 output tokens par 8h (code de test, 1 usage par compte)",
+      "user_with_GD4-PRO-1M": "1018000 input tokens + 1007000 output tokens par 8h"
+    }
+  }
+}

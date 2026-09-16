@@ -1,0 +1,18 @@
+# ============================================================
+# GD4 Assistant — configuration Netlify
+# (les clés API se mettent dans le dashboard Netlify :
+#  Site configuration → Environment variables — JAMAIS ici)
+# ============================================================
+[build]
+  command = "npm run build"
+  publish = "dist"
+
+[build.environment]
+  NODE_VERSION = "22"
+
+# Petites protections HTTP de base sur tout le site
+[[headers]]
+  for = "/*"
+  [headers.values]
+    X-Content-Type-Options = "nosniff"
+    Referrer-Policy = "strict-origin-when-cross-origin"
