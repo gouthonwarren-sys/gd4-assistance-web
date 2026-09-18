@@ -9,12 +9,20 @@
 //   body: { model: "@cf/...", ...payload }   (messages OU prompt+image)
 //   → renvoie la réponse JSON de Cloudflare telle quelle.
 // ============================================================
+import { getEnv } from '../../lib/serverEnv';
+
 export const prerender = false;
 
-const ACCOUNT_ID = import.meta.env.PUBLIC_CLOUDFLARE_ACCOUNT_ID || '';
-const API_KEY = import.meta.env.PUBLIC_CLOUDFLARE_API_KEY || '';
-
 export async function POST({ request }: { request: Request }) {
+  // 🔐 Clés lues AU RUNTIME (getEnv → process.env) et non via
+  // `import.meta.env` : sinon Vite inscrit la clé en clair dans le bundle de
+  // la fonction Netlify (→ « Exposed secrets detected », déploiement bloqué).
+  // 🔐 Clés lues AU RUNTIME (getEnv → process.env) et SANS préfixe `PUBLIC_`.
+  // ️ Ne jamais les renommer en PUBLIC_* : Astro/Vite inlinent alors la
+  // valeur en clair dans le bundle de la fonction Netlify (module interne
+  // d'Astro qui utilise `import.meta.env`) → « Exposed secrets detected ».
+  const ACCOUNT_ID = getEnv('CLOUDFLARE_ACCOUNT_ID');
+  const API_KEY = getEnv('CLOUDFLARE_API_KEY');
   if (!API_KEY || !ACCOUNT_ID) {
     return new Response(
       JSON.stringify({ success: false, errors: [{ message: 'Clé Cloudflare manquante côté serveur : ajoute PUBLIC_CLOUDFLARE_API_KEY et PUBLIC_CLOUDFLARE_ACCOUNT_ID dans .env puis redémarre npm run dev.' }] }),

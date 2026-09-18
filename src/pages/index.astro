@@ -9,16 +9,24 @@ import PricingModal from '../components/PricingModal.astro';
 // disponibles comme secours (options du sélecteur de modèle).
 //
 // 🔐 SÉCURITÉ (mise en ligne publique) : les CLÉS ne quittent JAMAIS le
-// serveur — elles vivent dans .env et ne sont utilisées que par les proxies
-// /api/groq, /api/nvidia et /api/cloudflare. Le navigateur ne reçoit ici que
-// des booléens "prêt / pas prêt" pour afficher les bons messages d'erreur :
-// aucune clé ne doit apparaître dans le HTML (inspecteur → body → data-*).
-const groqReady = Boolean(import.meta.env.PUBLIC_GROQ_API_KEY);
-const groqModel = import.meta.env.PUBLIC_GROQ_MODEL || 'qwen/qwen3.8-27b';
-const nvidiaReady = Boolean(import.meta.env.PUBLIC_NVIDIA_API_KEY);
-const nvidiaModel = import.meta.env.PUBLIC_NVIDIA_MODEL || 'deepseek-ai/deepseek-v4-flash-0731';
-const cloudflareReady = Boolean(import.meta.env.PUBLIC_CLOUDFLARE_API_KEY && import.meta.env.PUBLIC_CLOUDFLARE_ACCOUNT_ID);
-const cloudflareModel = import.meta.env.PUBLIC_CLOUDFLARE_MODEL || '@cf/qwen/qwen3.8-27b';
+// serveur — elles vivent dans .env (ou dans les variables d'environnement
+// Netlify) et ne sont utilisées que par les proxies /api/groq, /api/nvidia
+// et /api/cloudflare. Le navigateur ne reçoit ici que des booléens
+// "prêt / pas prêt" pour afficher les bons messages d'erreur : aucune clé ne
+// doit apparaître dans le HTML (inspecteur → body → data-*).
+//
+// ⚠️ On lit ces variables avec getEnv() (→ process.env au runtime) et NON
+// avec `import.meta.env.X` : Vite remplacerait l'expression par la VALEUR
+// littérale au build, et la clé se retrouverait en clair dans le bundle de
+// la fonction Netlify (→ « Exposed secrets detected », déploiement bloqué).
+import { getEnv } from '../lib/serverEnv';
+
+const groqReady = Boolean(getEnv('GROQ_API_KEY'));
+const groqModel = getEnv('GROQ_MODEL', 'qwen/qwen3.8-27b');
+const nvidiaReady = Boolean(getEnv('NVIDIA_API_KEY'));
+const nvidiaModel = getEnv('NVIDIA_MODEL', 'deepseek-ai/deepseek-v4-flash-0731');
+const cloudflareReady = Boolean(getEnv('CLOUDFLARE_API_KEY') && getEnv('CLOUDFLARE_ACCOUNT_ID'));
+const cloudflareModel = getEnv('CLOUDFLARE_MODEL', '@cf/qwen/qwen3.8-27b');
 ---
 
 <!DOCTYPE html>

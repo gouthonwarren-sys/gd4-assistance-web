@@ -16,12 +16,17 @@
 //   Auth : Bearer <PUBLIC_GROQ_API_KEY>
 //   Reponse : { choices: [{ message: { content } }] }
 // ============================================================
+import { getEnv } from '../../lib/serverEnv';
+
 export const prerender = false;
 
-const API_KEY = import.meta.env.PUBLIC_GROQ_API_KEY || '';
-const BASE_URL = import.meta.env.PUBLIC_GROQ_BASE_URL || 'https://api.groq.com/openai/v1';
-
 export async function POST({ request }: { request: Request }) {
+  // 🔐 Clés lues AU RUNTIME (getEnv → process.env) et SANS préfixe `PUBLIC_`.
+  // ⚠️ Ne jamais les renommer en PUBLIC_* : Astro/Vite inlinent alors la
+  // valeur en clair dans le bundle de la fonction Netlify (module interne
+  // d'Astro qui utilise `import.meta.env`) → « Exposed secrets detected ».
+  const API_KEY = getEnv('GROQ_API_KEY');
+  const BASE_URL = getEnv('GROQ_BASE_URL', 'https://api.groq.com/openai/v1');
   if (!API_KEY) {
     return new Response(
       JSON.stringify({ success: false, errors: [{ message: 'Clé Groq manquante côté serveur : ajoute PUBLIC_GROQ_API_KEY dans .env puis redémarre npm run dev (tu peux la créer gratuitement sur https://console.groq.com → API Keys).' }] }),

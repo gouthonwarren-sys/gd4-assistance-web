@@ -3,6 +3,7 @@
 import type { APIRoute } from 'astro';
 import promoData from '../../lib/promo_codes.json';
 import { createClient } from '@supabase/supabase-js';
+import { getEnv } from '../../lib/serverEnv';
 
 export const prerender = false;
 
@@ -38,12 +39,11 @@ export const POST: APIRoute = async ({ request }) => {
     if (usedBy.includes(userId)) return json({ ok: false, message: 'Tu as déjà utilisé ce code.' }, 409);
 
     // 2) Clés SERVEUR (SANS préfixe PUBLIC → jamais exposées au navigateur)
-    const url = (import.meta as any).env?.SUPABASE_URL
-      || (typeof process !== 'undefined' ? (process as any)?.env?.SUPABASE_URL : '')
-      || 'https://loovbsraccdgofmakyqq.supabase.co';
-    const serviceKey = (import.meta as any).env?.SUPABASE_SERVICE_ROLE_KEY
-      || (typeof process !== 'undefined' ? (process as any)?.env?.SUPABASE_SERVICE_ROLE_KEY : '')
-      || '';
+    // 🔐 Lues AU RUNTIME via getEnv() : un accès `import.meta.env` faisait
+    // inliner TOUT le fichier .env (service role key incluse) dans le bundle
+    // de la fonction Netlify → « Exposed secrets detected » + deploy bloqué.
+    const url = getEnv('SUPABASE_URL', 'https://loovbsraccdgofmakyqq.supabase.co');
+    const serviceKey = getEnv('SUPABASE_SERVICE_ROLE_KEY');
     if (!url || !serviceKey) {
       return json({
         ok: false,
