@@ -12,7 +12,15 @@
 // ============================================================
 
 import { supabase } from './supabase';
-import { getManualProjectContext, setManualProjectContext } from './projectMemory';
+import {
+  getManualProjectContext,
+  setManualProjectContext,
+  exportScopeSnapshot,
+  importScopeSnapshot,
+  mergeScopeMemory,
+  deleteScopeMemory,
+  mergeConversationHubIntoProject,
+} from './projectMemory';
 
 export interface ChatMessage {
   role: 'user' | 'assistant';
@@ -259,6 +267,46 @@ export async function setProjectMemoryText(value: string, userId: string | null)
 }
 
 // ============================================================
+// 🗂️ CENTRE DE DONNÉES — ENREGISTRÉ DANS LE COMPTE (local + cloud)
+// Chaque PROJET et chaque CONVERSATION LIBRE a son propre centre de données.
+// Quand une conversation rejoint un projet, son hub est FUSIONNÉ dans celui du
+// projet : rien n'est perdu, et deux projets de jeu ne se mélangent jamais.
+// ============================================================
+const HUB_SETTING_KEY = 'projectHubScopes';
+let hubSyncTimer: number | null = null;
+
+/** Envoie le centre de données du compte dans `user_settings` (cloud). */
+export async function syncHubToCloud(userId: string | null): Promise<void> {
+  if (!userId) return;
+  await setSetting(userId, HUB_SETTING_KEY, exportScopeSnapshot(userId));
+}
+
+/** Restaure le centre de données du compte (fusion sans écrasement). */
+export async function restoreHubFromCloud(userId: string | null): Promise<number> {
+  if (!userId) return 0;
+  const snapshot = getSetting<unknown>(userId, HUB_SETTING_KEY, null);
+  const merged = importScopeSnapshot(userId, snapshot);
+  if (merged) window.dispatchEvent(new CustomEvent('data-hub-updated'));
+  return merged;
+}
+
+/** Sauvegarde différée (2 s) : on n'écrit pas dans le cloud à chaque message. */
+export function scheduleHubCloudSync(): void {
+  try {
+    if (hubSyncTimer !== null) window.clearTimeout(hubSyncTimer);
+    hubSyncTimer = window.setTimeout(() => {
+      hubSyncTimer = null;
+      void syncHubToCloud(getUserFromCache()?.id ?? null);
+    }, 2000);
+  } catch { /* stockage indisponible */ }
+}
+
+if (typeof window !== 'undefined') {
+  // 🔔 Toute écriture du hub (IA, utilisateur, fusion, vidage) → sauvegardée
+  window.addEventListener('gd4-memory-changed', () => scheduleHubCloudSync());
+}
+
+// ============================================================
 // 📁 PROJETS — dossiers de conversations (nom + description)
 // ------------------------------------------------------------
 // Un projet range des conversations et sa DESCRIPTION est injectée
@@ -340,13 +388,21 @@ export async function removeProject(projectIdValue: string, userId: string | nul
 
   const map = getChatProjectMap(userId);
   let changed = false;
+  const detachedChats: string[] = [];
   for (const chatId of Object.keys(map)) {
     if (map[chatId] === projectIdValue) {
       delete map[chatId];
+      detachedChats.push(chatId);
       changed = true;
     }
   }
   if (changed) await setSetting(userId, CHAT_PROJECTS_SETTING_KEY, map);
+  // 🗂️ Le centre de données du projet supprimé est REDISTRIBUÉ à chacune de ses
+  // conversations : elles redeviennent autonomes sans perdre la mémoire du jeu.
+  for (const chatId of detachedChats) {
+    mergeScopeMemory(userId, `p:${projectIdValue}`, `c:${chatId}`, true);
+  }
+  if (detachedChats.length) deleteScopeMemory(userId, `p:${projectIdValue}`);
   if (getActiveProjectId(userId) === projectIdValue) await setActiveProjectId(null, userId);
   if (userId) window.dispatchEvent(new CustomEvent('projects-updated'));
 }
@@ -383,6 +439,13 @@ export async function setChatProject(
   if (projectIdValue) map[chatId] = projectIdValue;
   else delete map[chatId];
   await setSetting(userId, CHAT_PROJECTS_SETTING_KEY, map);
+  // 🗂️ La conversation REJOINT un projet → son centre de données de conversation
+  // est FUSIONNÉ dans celui du projet (points importants + journal d'actions),
+  // puis son scope est absorbé : plus de doublon, plus de fuite entre projets.
+  if (projectIdValue) {
+    const moved = mergeConversationHubIntoProject(userId, chatId, projectIdValue);
+    if (moved) window.dispatchEvent(new CustomEvent('data-hub-updated'));
+  }
   if (userId) window.dispatchEvent(new CustomEvent('projects-updated'));
 }
 
@@ -593,6 +656,9 @@ export function syncAccountData(account: AccountInfo): Promise<void> {
       loadCloudSettingsIntoCache(account.id),
       syncChatsFromCloud(account.id),
     ]);
+    // 🗂️ Centre de données du compte (par projet / conversation) : restauré
+    // depuis `user_settings` puis fusionné avec ce qui existe déjà en local.
+    await restoreHubFromCloud(account.id);
   };
   syncChain = syncChain.then(run, run);
   return syncChain;

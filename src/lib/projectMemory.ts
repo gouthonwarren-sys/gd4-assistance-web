@@ -127,6 +127,8 @@ export function getProjectMemory(userId: string | null): ProjectContextMemory {
 function saveProjectMemory(userId: string | null, memory: ProjectContextMemory): void {
   try {
     localStorage.setItem(nsKey(PROJECT_CONTEXT_KEY, userId), JSON.stringify(memory));
+    // 🔔 Prévient l'app : synchro cloud du centre de données + rafraîchissement UI
+    if (typeof window !== 'undefined') window.dispatchEvent(new CustomEvent('gd4-memory-changed'));
   } catch {
     // stockage indisponible → on ignore sans casser le reste
   }
@@ -247,6 +249,106 @@ export function clearScopeMemory(userId: string | null, scopeKey: string): void 
     scope.facts = [];
     scope.actionLog = [];
   });
+}
+
+// ============================================================================
+// 🗂️ FUSION DU CENTRE DE DONNÉES QUAND UNE CONVERSATION REJOINT UN PROJET
+// Les points importants de la conversation libre sont intégrés au projet
+// (doublons dédupliqués), puis le scope de la conversation est absorbé : rien
+// n'est perdu, et deux projets de jeu ne se mélangent JAMAIS entre eux.
+// ============================================================================
+export function mergeScopeMemory(
+  userId: string | null,
+  fromScopeKey: string,
+  toScopeKey: string,
+  keepSource = false
+): number {
+  if (!fromScopeKey || !toScopeKey || fromScopeKey === toScopeKey) return 0;
+  const memory = getProjectMemory(userId);
+  const source = memory.scopes[fromScopeKey];
+  if (!source) return 0;
+  const target = memory.scopes[toScopeKey] ?? makeDefaultScope();
+  const seen = new Set(target.facts.map((f) => f.toLowerCase().trim()));
+  let moved = 0;
+  for (const fact of source.facts) {
+    const key = fact.toLowerCase().trim();
+    if (!key || seen.has(key)) continue;
+    seen.add(key);
+    target.facts.push(fact);
+    moved += 1;
+  }
+  // Le journal d'actions suit le même chemin (ne pas recréer un nœud existant)
+  const knownEntries = new Set(target.actionLog);
+  for (const entry of source.actionLog) {
+    if (knownEntries.has(entry)) continue;
+    knownEntries.add(entry);
+    target.actionLog.push(entry);
+  }
+  target.actionLog = target.actionLog.slice(-SCOPED_ACTION_LOG_MAX);
+  target.updatedAt = Date.now();
+  memory.scopes[toScopeKey] = target;
+  if (!keepSource) delete memory.scopes[fromScopeKey];
+  saveProjectMemory(userId, memory);
+  return moved;
+}
+
+/** Conversation libre (`c:<chatId>`) → projet (`p:<projectId>`). */
+export function mergeConversationHubIntoProject(userId: string | null, chatId: string, projectId: string): number {
+  if (!chatId || !projectId) return 0;
+  return mergeScopeMemory(userId, `c:${chatId}`, `p:${projectId}`);
+}
+
+/** 🗑 Supprime complètement un scope (après redistribution ou projet supprimé). */
+export function deleteScopeMemory(userId: string | null, scopeKey: string): void {
+  if (!scopeKey) return;
+  const memory = getProjectMemory(userId);
+  if (!memory.scopes[scopeKey]) return;
+  delete memory.scopes[scopeKey];
+  saveProjectMemory(userId, memory);
+}
+
+/** 📤 Photo du centre de données (pour l'ENREGISTRER dans le compte / le cloud). */
+export function exportScopeSnapshot(userId: string | null): Record<string, ScopeMemory> {
+  return getProjectMemory(userId).scopes;
+}
+
+/** 📥 Ré-import SANS écrasement : les points déjà présents en local gagnent. */
+export function importScopeSnapshot(userId: string | null, snapshot: unknown): number {
+  if (!snapshot || typeof snapshot !== 'object') return 0;
+  const memory = getProjectMemory(userId);
+  let mergedFacts = 0;
+  let touched = false;
+  for (const [scopeKey, raw] of Object.entries(snapshot as Record<string, any>)) {
+    if (!raw || typeof raw !== 'object') continue;
+    const incomingFacts: string[] = Array.isArray(raw.facts)
+      ? raw.facts.filter((f: any) => typeof f === 'string' && f.trim())
+      : [];
+    const incomingLog: string[] = Array.isArray(raw.actionLog)
+      ? raw.actionLog.filter((a: any) => typeof a === 'string')
+      : [];
+    if (!incomingFacts.length && !incomingLog.length) continue;
+    const scope = memory.scopes[scopeKey] ?? makeDefaultScope();
+    const seen = new Set(scope.facts.map((f) => f.toLowerCase().trim()));
+    for (const fact of incomingFacts) {
+      const key = fact.toLowerCase().trim();
+      if (!key || seen.has(key)) continue;
+      seen.add(key);
+      scope.facts.push(fact);
+      mergedFacts += 1;
+    }
+    const knownEntries = new Set(scope.actionLog);
+    for (const entry of incomingLog) {
+      if (knownEntries.has(entry)) continue;
+      knownEntries.add(entry);
+      scope.actionLog.push(entry);
+    }
+    scope.actionLog = scope.actionLog.slice(-SCOPED_ACTION_LOG_MAX);
+    scope.updatedAt = Date.now();
+    memory.scopes[scopeKey] = scope;
+    touched = true;
+  }
+  if (touched) saveProjectMemory(userId, memory);
+  return mergedFacts;
 }
 
 // Journal cumulatif des actions RÉELLEMENT appliquées dans Godot.

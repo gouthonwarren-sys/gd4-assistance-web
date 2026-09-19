@@ -276,16 +276,20 @@ RÈGLES : 1) Jamais de texte hors JSON. 2) Nœuds/propriétés Godot 4.x RÉELS 
           const relevantChatId = (typeof pluginChatId === 'string' && pluginChatId) ? pluginChatId : currentChatId;
           systemPrompt += buildProjectPromptForChat(relevantChatId, currentUserId);
         } catch { /* repli silencieux */ }
-        // 🗂️ CENTRE DE DONNÉES : on rappelle au modèle qu'il peut ranger un
-        // point important et durable dans le dossier courant.
+        // 🗂️ CENTRE DE DONNÉES : c'est l'IA qui l'alimente en priorité.
+        // Chaque projet et chaque conversation libre a le sien ; il est enregistré
+        // dans le compte du dev et renvoyé au modèle à chaque demande.
         try {
           const { label } = currentMemoryScope();
           systemPrompt += `\n\n[CENTRE DE DONNÉES — ${label}]\n` +
-            `Quand un point important et DURABLE est décidé (préférence de l'utilisateur, contrainte technique, décision de design, état d'avancement), ` +
-            `ajoute dans "actions" une entrée {"type":"remember","text":"..."} avec une phrase courte et factuelle ` +
-            `(ex. {"type":"remember","text":"Le joueur veut un jeu très coloré, palette vive"}). ` +
-            `Ces points sont conservés dans le centre de données de ce dossier et te seront renvoyés à chaque demande. ` +
-            `Les actions "remember" ne modifient PAS la scène Godot.`;
+            `C'est TOI qui remplis ce centre de données : c'est ta mémoire durable de ce dossier.\n` +
+            `RÈGLE : dans chaque réponse utile, ajoute 1 à 3 entrées {"type":"remember","text":"..."} dans "actions" pour retenir ce qui est durable et important :\n` +
+            `  • une préférence de l'utilisateur (ex. « veut un jeu très coloré, palette vive ») ;\n` +
+            `  • une contrainte technique (ex. « GDScript uniquement, pas de C# », « 60 FPS ») ;\n` +
+            `  • une décision de design/architecture (ex. « le joueur est un CharacterBody2D nommé Player ») ;\n` +
+            `  • un élément structurant que TU viens de créer (nœud, script, système) ou l'avancement du jeu.\n` +
+            `Textes courts et factuels (une phrase), sans doublon avec ceux déjà listés ci-dessus. ` +
+            `Les actions "remember" ne modifient PAS la scène Godot : elles vont dans le centre de données de ${label}.`;
         } catch { /* repli silencieux */ }
         return systemPrompt;
       }
@@ -1582,7 +1586,7 @@ Ne décris que l'image fournie. Ne produis pas de code ni d'actions JSON. Sois t
       function renderDataHub() {
         const { scopeKey, label } = currentMemoryScope();
         const labelEl = document.getElementById('dataHubScopeLabel');
-        if (labelEl) labelEl.textContent = `Dossier : ${label} · portée « ${scopeKey} ». Ces points partent dans le prompt système des prochaines demandes.`;
+        if (labelEl) labelEl.textContent = `Dossier : ${label} · portée « ${scopeKey} » · 💾 enregistré dans ton compte · les points d'une conversation qui rejoint un projet sont fusionnés dans le projet · réinjecté dans le prompt (l'IA en ajoute elle-même).`;
 
         const factsEl = document.getElementById('dataHubFacts');
         if (factsEl) {
