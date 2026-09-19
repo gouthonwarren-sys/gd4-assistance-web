@@ -604,6 +604,13 @@ RÈGLES : 1) Jamais de texte hors JSON. 2) Nœuds/propriétés Godot 4.x RÉELS 
           // sinon la question « repartait » vers Godot et se sauvegardait en
           // double avec un titre pollué par le contexte projet.
           if (typeof data.request_id === 'string' && data.request_id.startsWith('app_')) return;
+          // 🔌 Le dock local a OUVERT une conversation précise (« Ouvrir dans le
+          // plugin ») : on relie la session plugin à CETTE conversation pour que
+          // le fil continue au bon endroit, sans casser son historique.
+          if (typeof data.chat_id === 'string' && data.chat_id) {
+            pluginChatId = data.chat_id;
+            try { localStorage.setItem(pluginChatKey(), data.chat_id); } catch { /* ignore */ }
+          }
           try {
           const requestId = typeof data.request_id === 'string' ? data.request_id : '';
           if (requestId && processedRequestIds.has(requestId)) return;
