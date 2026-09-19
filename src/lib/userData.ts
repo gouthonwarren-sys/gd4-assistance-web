@@ -258,6 +258,190 @@ export async function setProjectMemoryText(value: string, userId: string | null)
   await setSetting(userId, 'projectMemoryText', normalized);
 }
 
+// ============================================================
+// 📁 PROJETS — dossiers de conversations (nom + description)
+// ------------------------------------------------------------
+// Un projet range des conversations et sa DESCRIPTION est injectée
+// dans le prompt système de chaque conversation qu'il contient.
+// Stockage : réglages du compte (user_settings.data) → synchro cloud
+// automatique, AUCUNE migration SQL nécessaire.
+//   - projects        : Project[]
+//   - chatProjects    : { [chatId]: projectId }
+//   - activeProjectId : projet par défaut des nouvelles conversations
+// ============================================================
+
+export interface Project {
+  id: string;
+  name: string;
+  description: string;
+  createdAt: number;
+  updatedAt: number;
+}
+
+const PROJECTS_SETTING_KEY = 'projects';
+const CHAT_PROJECTS_SETTING_KEY = 'chatProjects';
+const ACTIVE_PROJECT_SETTING_KEY = 'activeProjectId';
+
+function normalizeProject(raw: any): Project | null {
+  if (!raw || typeof raw.id !== 'string' || !raw.id) return null;
+  return {
+    id: raw.id,
+    name: typeof raw.name === 'string' && raw.name.trim() ? raw.name.trim() : 'Projet',
+    description: typeof raw.description === 'string' ? raw.description : '',
+    createdAt: typeof raw.createdAt === 'number' ? raw.createdAt : Date.now(),
+    updatedAt: typeof raw.updatedAt === 'number' ? raw.updatedAt : Date.now(),
+  };
+}
+
+/** Projets du compte, du plus récemment modifié au plus ancien. */
+export function getProjects(userId: string | null): Project[] {
+  const raw = getSetting<any[]>(userId, PROJECTS_SETTING_KEY, []);
+  if (!Array.isArray(raw)) return [];
+  return raw
+    .map(normalizeProject)
+    .filter((p): p is Project => p !== null)
+    .sort((a, b) => (b.updatedAt ?? 0) - (a.updatedAt ?? 0));
+}
+
+export function getProject(userId: string | null, projectIdValue: string | null): Project | null {
+  if (!projectIdValue) return null;
+  return getProjects(userId).find((p) => p.id === projectIdValue) ?? null;
+}
+
+function newProjectId(): string {
+  return 'prj_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
+}
+
+/** Crée (sans `id`) ou met à jour un projet. Renvoie le projet enregistré. */
+export async function upsertProject(
+  input: { id?: string; name: string; description?: string },
+  userId: string | null
+): Promise<Project> {
+  const projects = getProjects(userId);
+  const now = Date.now();
+  const existing = input.id ? projects.find((p) => p.id === input.id) : undefined;
+  const saved: Project = {
+    id: existing?.id ?? newProjectId(),
+    name: (input.name || '').trim() || 'Projet',
+    description: (input.description ?? existing?.description ?? '').trim(),
+    createdAt: existing?.createdAt ?? now,
+    updatedAt: now,
+  };
+  const next = [saved, ...projects.filter((p) => p.id !== saved.id)];
+  await setSetting(userId, PROJECTS_SETTING_KEY, next);
+  if (userId) window.dispatchEvent(new CustomEvent('projects-updated'));
+  return saved;
+}
+
+/** Supprime un projet et DÉTACHE ses conversations (elles ne sont pas perdues). */
+export async function removeProject(projectIdValue: string, userId: string | null): Promise<void> {
+  const next = getProjects(userId).filter((p) => p.id !== projectIdValue);
+  await setSetting(userId, PROJECTS_SETTING_KEY, next);
+
+  const map = getChatProjectMap(userId);
+  let changed = false;
+  for (const chatId of Object.keys(map)) {
+    if (map[chatId] === projectIdValue) {
+      delete map[chatId];
+      changed = true;
+    }
+  }
+  if (changed) await setSetting(userId, CHAT_PROJECTS_SETTING_KEY, map);
+  if (getActiveProjectId(userId) === projectIdValue) await setActiveProjectId(null, userId);
+  if (userId) window.dispatchEvent(new CustomEvent('projects-updated'));
+}
+
+// --- Rattachement conversation → projet ---
+
+export function getChatProjectMap(userId: string | null): Record<string, string> {
+  const raw = getSetting<Record<string, string>>(userId, CHAT_PROJECTS_SETTING_KEY, {});
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return {};
+  const out: Record<string, string> = {};
+  for (const [chatId, projId] of Object.entries(raw)) {
+    if (typeof projId === 'string' && projId) out[chatId] = projId;
+  }
+  return out;
+}
+
+export function getProjectIdForChat(chatId: string | null, userId: string | null): string | null {
+  if (!chatId) return null;
+  return getChatProjectMap(userId)[chatId] ?? null;
+}
+
+export function getProjectForChat(chatId: string | null, userId: string | null): Project | null {
+  return getProject(userId, getProjectIdForChat(chatId, userId));
+}
+
+/** Rattache (ou détache avec `null`) une conversation à un projet. */
+export async function setChatProject(
+  chatId: string,
+  projectIdValue: string | null,
+  userId: string | null
+): Promise<void> {
+  if (!chatId) return;
+  const map = getChatProjectMap(userId);
+  if (projectIdValue) map[chatId] = projectIdValue;
+  else delete map[chatId];
+  await setSetting(userId, CHAT_PROJECTS_SETTING_KEY, map);
+  if (userId) window.dispatchEvent(new CustomEvent('projects-updated'));
+}
+
+/** Conversations rattachées à un projet (les plus récentes d'abord). */
+export function getProjectChats(projectIdValue: string | null, userId: string | null): Chat[] {
+  const map = getChatProjectMap(userId);
+  return getChats(userId).filter((chat) => map[chat.id] === projectIdValue);
+}
+
+/** Conversations sans projet. */
+export function getUnassignedChats(userId: string | null): Chat[] {
+  const map = getChatProjectMap(userId);
+  return getChats(userId).filter((chat) => !map[chat.id]);
+}
+
+// --- Projet actif (celui des nouvelles conversations) ---
+
+export function getActiveProjectId(userId: string | null): string | null {
+  const value = getSetting<string | null>(userId, ACTIVE_PROJECT_SETTING_KEY, null);
+  if (!value) return null;
+  // Projet supprimé entre-temps → on nettoie
+  return getProjects(userId).some((p) => p.id === value) ? value : null;
+}
+
+export async function setActiveProjectId(projectIdValue: string | null, userId: string | null): Promise<void> {
+  await setSetting(userId, ACTIVE_PROJECT_SETTING_KEY, projectIdValue ?? null);
+  if (userId) window.dispatchEvent(new CustomEvent('projects-updated'));
+}
+
+// --- Injection dans le prompt système ---
+
+/**
+ * Bloc de prompt système décrivant le projet de la conversation.
+ * La description du projet est ainsi « directement dans le système » des
+ * conversations qui vivent dans ce dossier.
+ */
+export function buildProjectPromptSection(project: Project | null): string {
+  if (!project) return '';
+  const lines: string[] = [
+    '[PROJET EN COURS — GD4]',
+    `Nom du projet : ${project.name}`,
+  ];
+  if (project.description) {
+    lines.push(
+      'Description / consignes du projet (à respecter dans TOUTES les réponses de cette conversation) :',
+      project.description
+    );
+  }
+  lines.push(
+    'Toutes les conversations de ce dossier appartiennent au MÊME projet : garde cette description en mémoire et reste cohérent avec elle.'
+  );
+  return `\n\n${lines.join('\n')}`;
+}
+
+/** Bloc prêt à concaténer pour une conversation donnée ('' si aucun projet). */
+export function buildProjectPromptForChat(chatId: string | null, userId: string | null): string {
+  return buildProjectPromptSection(getProjectForChat(chatId, userId));
+}
+
 // --- Quota : compteur local PAR COMPTE (pas de synchro multi-appareils volontaire,
 //     afin d'éviter les conflits et les contournements. email conservé pour diagnostic.)
 export function getQuota(userId: string | null): QuotaState | null {

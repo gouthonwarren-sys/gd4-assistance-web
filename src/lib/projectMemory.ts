@@ -19,6 +19,33 @@ export interface ProjectContextMemory {
   modelSummaries: Record<string, string>;
   recentEvents: ProjectMemoryEvent[];
   lastSummaryAt: number;
+  scopes: Record<string, ScopeMemory>;  // 🆕 mémoire PAR projet / conversation
+}
+
+/**
+ * 🗂️ Mémoire d'un SCOPE (un projet, ou une conversation isolée).
+ * - `facts`     : centre de données (points importants décidés avec l'IA)
+ * - `actionLog` : journal des actions RÉELLEMENT appliquées dans ce scope
+ *   (recadré : les actions d'un projet de jeu ne polluent plus un autre projet)
+ * Clés de scope : `p:<projectId>` | `c:<chatId>` | `global`
+ */
+export interface ScopeMemory {
+  facts: string[];
+  actionLog: string[];
+  updatedAt: number;
+}
+
+/** Clé de scope : le projet s'il existe, sinon la conversation elle-même. */
+export function memoryScopeKey(chatId: string | null, projectId: string | null): string {
+  if (projectId) return `p:${projectId}`;
+  if (chatId) return `c:${chatId}`;
+  return 'global';
+}
+
+export function scopeLabel(scopeKey: string, projectName?: string, chatTitle?: string): string {
+  if (scopeKey.startsWith('p:')) return projectName ? `projet « ${projectName} »` : 'projet';
+  if (scopeKey.startsWith('c:')) return chatTitle ? `conversation « ${chatTitle} »` : 'cette conversation';
+  return 'mémoire globale';
 }
 
 const PROJECT_CONTEXT_KEY = 'gd4_project_context_memory';
@@ -35,7 +62,12 @@ function makeDefaultMemory(): ProjectContextMemory {
     modelSummaries: {},
     recentEvents: [],
     lastSummaryAt: 0,
+    scopes: {},
   };
+}
+
+function makeDefaultScope(): ScopeMemory {
+  return { facts: [], actionLog: [], updatedAt: Date.now() };
 }
 
 function normalizeText(value: string, preserveLineBreaks = false): string {
@@ -63,6 +95,21 @@ export function getProjectMemory(userId: string | null): ProjectContextMemory {
     const raw = localStorage.getItem(nsKey(PROJECT_CONTEXT_KEY, userId));
     if (!raw) return makeDefaultMemory();
     const parsed = JSON.parse(raw);
+    const scopes: Record<string, ScopeMemory> = {};
+    if (parsed.scopes && typeof parsed.scopes === 'object') {
+      for (const [key, value] of Object.entries(parsed.scopes as any)) {
+        if (!value || typeof value !== 'object') continue;
+        scopes[key] = {
+          facts: Array.isArray((value as any).facts)
+            ? (value as any).facts.filter((f: any) => typeof f === 'string' && f.trim())
+            : [],
+          actionLog: Array.isArray((value as any).actionLog)
+            ? (value as any).actionLog.filter((a: any) => typeof a === 'string')
+            : [],
+          updatedAt: typeof (value as any).updatedAt === 'number' ? (value as any).updatedAt : Date.now(),
+        };
+      }
+    }
     return {
       manualContext: typeof parsed.manualContext === 'string' ? parsed.manualContext : '',
       globalSummary: typeof parsed.globalSummary === 'string' ? parsed.globalSummary : '',
@@ -70,6 +117,7 @@ export function getProjectMemory(userId: string | null): ProjectContextMemory {
       modelSummaries: parsed.modelSummaries && typeof parsed.modelSummaries === 'object' ? parsed.modelSummaries : {},
       recentEvents: Array.isArray(parsed.recentEvents) ? parsed.recentEvents.filter((entry: any) => entry && typeof entry.text === 'string') : [],
       lastSummaryAt: typeof parsed.lastSummaryAt === 'number' ? parsed.lastSummaryAt : 0,
+      scopes,
     };
   } catch {
     return makeDefaultMemory();
@@ -130,15 +178,88 @@ export function recordProjectConversation(
   saveProjectMemory(userId, memory);
 }
 
+// ============================================================
+// 🗂️ CENTRE DE DONNÉES (hub) + JOURNAL RECADRÉ, PAR SCOPE
+// ------------------------------------------------------------
+// Chaque projet (ou conversation isolée) possède son propre scope :
+//   - ses FAITS importants (centre de données)
+//   - son JOURNAL des actions réellement appliquées
+// → les actions d'un projet de jeu ne polluent plus un autre projet,
+//   et le journal garde toute sa puissance DANS son périmètre.
+// ============================================================
+
+const HUB_FACT_MAX = 80;
+const HUB_FACT_LEN_MAX = 400;
+
+/** Scope d'un chat : `p:<projet>` s'il appartient à un projet, sinon `c:<chat>`. */
+export function getScopeMemory(userId: string | null, scopeKey: string): ScopeMemory {
+  const memory = getProjectMemory(userId);
+  if (!memory.scopes[scopeKey]) {
+    return makeDefaultScope();
+  }
+  return memory.scopes[scopeKey];
+}
+
+function updateScope(
+  userId: string | null,
+  scopeKey: string,
+  updater: (scope: ScopeMemory) => void
+): ScopeMemory {
+  const memory = getProjectMemory(userId);
+  const scope = memory.scopes[scopeKey] ?? makeDefaultScope();
+  updater(scope);
+  scope.updatedAt = Date.now();
+  memory.scopes[scopeKey] = scope;
+  saveProjectMemory(userId, memory);
+  try { window.dispatchEvent(new CustomEvent('memory-updated', { detail: { scope: scopeKey } })); } catch { /* ignore */ }
+  return scope;
+}
+
+/** 📌 Ajoute un point important au centre de données du scope (dédupliqué). */
+export function addHubFact(userId: string | null, scopeKey: string, text: string): boolean {
+  const clean = normalizeText(text || '');
+  if (!clean) return false;
+  const trimmed = clean.length > HUB_FACT_LEN_MAX ? `${clean.slice(0, HUB_FACT_LEN_MAX).trim()}…` : clean;
+  let added = false;
+  updateScope(userId, scopeKey, (scope) => {
+    const exists = scope.facts.some((f) => f.toLowerCase() === trimmed.toLowerCase());
+    if (exists) return;
+    scope.facts.push(trimmed);
+    if (scope.facts.length > HUB_FACT_MAX) scope.facts = scope.facts.slice(-HUB_FACT_MAX);
+    added = true;
+  });
+  return added;
+}
+
+/** 🗑 Retire un point du centre de données (par index). */
+export function removeHubFact(userId: string | null, scopeKey: string, index: number): void {
+  updateScope(userId, scopeKey, (scope) => {
+    if (index >= 0 && index < scope.facts.length) scope.facts.splice(index, 1);
+  });
+}
+
+export function getHubFacts(userId: string | null, scopeKey: string): string[] {
+  return [...getScopeMemory(userId, scopeKey).facts];
+}
+
+export function clearScopeMemory(userId: string | null, scopeKey: string): void {
+  updateScope(userId, scopeKey, (scope) => {
+    scope.facts = [];
+    scope.actionLog = [];
+  });
+}
+
 // Journal cumulatif des actions RÉELLEMENT appliquées dans Godot.
 // C'est LA mémoire « ce qui existe déjà dans le jeu » : le modèle peut ainsi
 // CONTINUER la création (ne pas recréer Player, ne pas dupliquer les scripts).
 const ACTION_LOG_MAX = 150;
+const SCOPED_ACTION_LOG_MAX = 120;
 
 export function recordProjectActions(
   userId: string | null,
   modelKey: string,
-  actions: any[]
+  actions: any[],
+  scopeKey?: string
 ): void {
   void modelKey;
   if (!Array.isArray(actions) || !actions.length) return;
@@ -173,6 +294,23 @@ export function recordProjectActions(
     }
   }
   if (!lines.length) return;
+
+  // 📓 JOURNAL RECADRÉ : les actions vont dans le scope (projet/conversation)
+  // pour ne plus mélanger deux projets de jeu différents. Le journal global
+  // historique reste alimenté en parallèle (aucune perte d'efficacité).
+  if (scopeKey) {
+    const scope = memory.scopes[scopeKey] ?? makeDefaultScope();
+    for (const line of lines) scope.actionLog.push(`${stamp} — ${line}`);
+    const dedupedScoped: string[] = [];
+    for (const entry of scope.actionLog) {
+      if (dedupedScoped.length && dedupedScoped[dedupedScoped.length - 1] === entry) continue;
+      dedupedScoped.push(entry);
+    }
+    scope.actionLog = dedupedScoped.slice(-SCOPED_ACTION_LOG_MAX);
+    scope.updatedAt = Date.now();
+    memory.scopes[scopeKey] = scope;
+  }
+
   for (const line of lines) memory.actionLog.push(`${stamp} — ${line}`);
   // Cap du journal (on garde les plus récentes) + dédup des doublons consécutifs
   const deduped: string[] = [];
@@ -187,16 +325,28 @@ export function recordProjectActions(
 export function buildInjectedProjectContext(
   userId: string | null,
   modelKey: string,
-  files?: Array<{ path: string; content: string }>
+  files?: Array<{ path: string; content: string }>,
+  options?: { scopeKey?: string; scopeLabel?: string }
 ): string {
   const memory = getProjectMemory(userId);
   const selectedModel = modelKey || 'unknown';
   const modelSummary = memory.modelSummaries[selectedModel] || memory.globalSummary;
+  const scopeKey = options?.scopeKey || '';
+  const label = options?.scopeLabel || (scopeKey.startsWith('p:') ? 'ce projet' : 'cette conversation');
+  const scope = scopeKey ? (memory.scopes[scopeKey] ?? makeDefaultScope()) : null;
 
   const sections: string[] = [];
 
   if (memory.manualContext) {
     sections.push(`[Contexte manuel du projet]\n${memory.manualContext}`);
+  }
+
+  // 🗂️ CENTRE DE DONNÉES du scope : les points importants décidés avec l'IA
+  if (scope && scope.facts.length) {
+    sections.push(
+      `[CENTRE DE DONNÉES — ${label} (points importants déjà actés, à respecter)]\n` +
+      scope.facts.map((f) => `• ${f}`).join('\n')
+    );
   }
 
   if (modelSummary) {
@@ -207,9 +357,31 @@ export function buildInjectedProjectContext(
     sections.push(`[Mémoire globale du projet]\n${memory.globalSummary}`);
   }
 
-  if (memory.actionLog.length) {
-    const recentActions = memory.actionLog.slice(-60).join('\n');
-    sections.push(`[Journal des actions DÉJÀ appliquées dans Godot — NE REFAIS JAMAIS une action déjà listée ici, ces nœuds/scripts existent déjà dans la scène]\n${recentActions}`);
+  // 📓 JOURNAL DES ACTIONS — recadré sur le scope courant (projet/conversation)
+  const scopedLog = scope?.actionLog ?? [];
+  if (scopedLog.length) {
+    sections.push(
+      `[Journal des actions DÉJÀ appliquées dans ${label} — NE REFAIS JAMAIS une action déjà listée ici, ces nœuds/scripts existent déjà dans la scène]\n` +
+      scopedLog.slice(-60).join('\n')
+    );
+  }
+
+  // Filet de sécurité (aucune perte d'efficacité) : si le journal du scope est
+  // encore court, on rappelle les dernières actions des AUTRES scopes, sous une
+  // étiquette claire, pour que le modèle vérifie avant de recréer un nœud.
+  if (scopedLog.length < 12) {
+    const othersLog = Object.entries(memory.scopes)
+      .filter(([key]) => key !== scopeKey)
+      .flatMap(([, value]) => value.actionLog.slice(-15))
+      .concat(memory.actionLog.slice(-20));
+    const uniqueOthers: string[] = [];
+    for (const entry of othersLog) if (!uniqueOthers.includes(entry)) uniqueOthers.push(entry);
+    if (uniqueOthers.length) {
+      sections.push(
+        `[Journal GLOBAL (autres conversations/projets — À VÉRIFIER avant de recréer un nœud ou un script, mais NE PAS l'appliquer à ${label} sans confirmation)]\n` +
+        uniqueOthers.slice(-25).join('\n')
+      );
+    }
   }
 
   if (files && files.length) {

@@ -24,6 +24,20 @@
       <span>Nouvelle conversation</span>
     </button>
 
+    <!-- 📁 PROJETS : dossiers de conversations (nom + description) -->
+    <div class="space-y-2 shrink-0">
+      <div class="flex items-center justify-between px-2">
+        <span class="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">Projets</span>
+        <button id="newProjectBtn" type="button" title="Créer un projet (nom + description)"
+          class="text-slate-400 hover:text-cyan-400 p-1 rounded-lg hover:bg-slate-800 transition cursor-pointer">
+          <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" />
+          </svg>
+        </button>
+      </div>
+      <div id="projectsList" class="space-y-1 max-h-48 overflow-y-auto pr-1 text-xs"></div>
+    </div>
+
     <!-- Liste dynamique des conversations -->
     <div class="space-y-2 flex-1 flex flex-col min-h-0">
       <span class="text-[11px] font-semibold text-slate-500 px-2 uppercase tracking-wider shrink-0">Historique</span>
@@ -91,12 +105,63 @@
 
   </div>
 
+  <!-- 📁 Modale Projet : nom + description (description → prompt système des
+       conversations du dossier) -->
+  <div id="projectModal" class="hidden fixed inset-0 z-50 bg-black/60 backdrop-blur-sm items-center justify-center p-6">
+    <div class="w-full max-w-md bg-[#1b1e23] border border-slate-700/70 rounded-2xl shadow-2xl p-5 space-y-4">
+      <div>
+        <h3 id="projectModalTitle" class="text-sm font-semibold text-slate-100">Nouveau projet</h3>
+        <p class="text-[11px] text-slate-500 mt-1">Les conversations du dossier reçoivent cette description dans leur prompt système.</p>
+      </div>
+      <div class="space-y-1">
+        <label for="projectNameInput" class="text-[11px] text-slate-500 uppercase tracking-wider">Nom du projet</label>
+        <input id="projectNameInput" type="text" placeholder="Ex : RPG 2D — inventaire"
+          class="w-full bg-[#16181c] border border-slate-800 text-xs text-slate-200 placeholder-slate-600 px-3 py-2.5 rounded-xl focus:outline-none focus:border-cyan-500/60 transition" />
+      </div>
+      <div class="space-y-1">
+        <label for="projectDescInput" class="text-[11px] text-slate-500 uppercase tracking-wider">Description / consignes</label>
+        <textarea id="projectDescInput" rows="5" placeholder="Ex : jeu de plateforme 2D en Godot 4, GDScript uniquement, tilemap 16x16, pas de 3D…"
+          class="w-full bg-[#16181c] border border-slate-800 text-xs text-slate-200 placeholder-slate-600 px-3 py-2.5 rounded-xl focus:outline-none focus:border-cyan-500/60 transition resize-y"></textarea>
+      </div>
+      <!-- 🗂️ Centre de données du projet : les points importants sont réinjectés
+           dans le prompt système de TOUTES les conversations du dossier -->
+      <div id="projectHubBlock" class="space-y-2 border-t border-slate-800 pt-3">
+        <label class="text-[11px] text-slate-500 uppercase tracking-wider">🗂️ Centre de données du projet</label>
+        <div id="projectHubList" class="space-y-1 max-h-32 overflow-y-auto"></div>
+        <div class="flex items-center gap-2">
+          <input id="projectHubInput" type="text" placeholder="Ex : le joueur utilise CharacterBody2D"
+            class="flex-1 bg-[#16181c] border border-slate-800 text-xs text-slate-200 placeholder-slate-600 px-3 py-2 rounded-xl focus:outline-none focus:border-cyan-500/60 transition" />
+          <button id="projectHubAddBtn" type="button" title="Ajouter ce point au projet"
+            class="text-xs font-medium text-white bg-cyan-600 hover:bg-cyan-500 px-3 py-2 rounded-xl transition cursor-pointer">＋</button>
+        </div>
+        <p id="projectHubHint" class="text-[10px] text-slate-600"></p>
+      </div>
+      <div class="flex justify-end gap-2 pt-1">
+        <button id="projectCancelBtn" type="button"
+          class="text-xs text-slate-300 hover:text-slate-100 bg-slate-800/60 hover:bg-slate-800 border border-slate-700/50 px-4 py-2 rounded-xl transition cursor-pointer">Annuler</button>
+        <button id="projectSaveBtn" type="button"
+          class="text-xs font-medium text-white bg-cyan-600 hover:bg-cyan-500 px-4 py-2 rounded-xl transition cursor-pointer">Enregistrer</button>
+      </div>
+    </div>
+  </div>
+
 </aside>
 
 <script>
   import { supabase } from '../lib/supabase';
   import {
     type Chat,
+    type Project,
+    getProject,
+    getProjects,
+    upsertProject,
+    removeProject,
+    setActiveProjectId,
+    getActiveProjectId,
+    getProjectChats,
+    getProjectIdForChat,
+    getChatProjectMap,
+    setChatProject,
     getUserFromCache,
     getChats,
     upsertChat,
@@ -105,6 +170,11 @@
     setActiveChatId,
     syncAccountData,
   } from '../lib/userData';
+  import {
+    getHubFacts,
+    addHubFact,
+    removeHubFact,
+  } from '../lib/projectMemory';
 
   const AUTH_KEY = 'gd4_user_session';
 
@@ -127,23 +197,278 @@
 
   // (Type Chat importé depuis lib/userData — messages + titre + updatedAt)
 
+  // ============================================================
+  // 📁 PROJETS — dossiers de conversations (nom + description)
+  // ============================================================
+  const projectsList = document.getElementById('projectsList');
+  const newProjectBtn = document.getElementById('newProjectBtn');
+  const projectModal = document.getElementById('projectModal');
+  const projectModalTitle = document.getElementById('projectModalTitle');
+  const projectNameInput = document.getElementById('projectNameInput') as HTMLInputElement | null;
+  const projectDescInput = document.getElementById('projectDescInput') as HTMLTextAreaElement | null;
+  const projectSaveBtn = document.getElementById('projectSaveBtn');
+  const projectCancelBtn = document.getElementById('projectCancelBtn');
+
+  // Projet en cours d'édition (null = création) + projet actif (nouvelles conversations)
+  let editingProjectId: string | null = null;
+  let activeProjectId: string | null = null;
+
+  function openProjectModal(projectIdToEdit: string | null) {
+    if (!projectModal) return;
+    editingProjectId = projectIdToEdit;
+    const project = projectIdToEdit ? getProject(currentUserId, projectIdToEdit) : null;
+    if (projectModalTitle) projectModalTitle.textContent = project ? 'Modifier le projet' : 'Nouveau projet';
+    if (projectNameInput) projectNameInput.value = project?.name ?? '';
+    if (projectDescInput) projectDescInput.value = project?.description ?? '';
+    projectModal.classList.remove('hidden');
+    projectModal.classList.add('flex');
+    projectNameInput?.focus();
+    renderProjectHub();
+  }
+
+  function closeProjectModal() {
+    if (!projectModal) return;
+    projectModal.classList.add('hidden');
+    projectModal.classList.remove('flex');
+    editingProjectId = null;
+  }
+
+  // 🗂️ CENTRE DE DONNÉES DU PROJET — visible et modifiable depuis la modale.
+  // Les points saisis ici sont réinjectés dans le prompt système de TOUTES les
+  // conversations du dossier (et affichés dans le dock Godot : onglet 🗂️).
+  const projectHubList = document.getElementById('projectHubList');
+  const projectHubInput = document.getElementById('projectHubInput') as HTMLInputElement | null;
+  const projectHubAddBtn = document.getElementById('projectHubAddBtn');
+  const projectHubHint = document.getElementById('projectHubHint');
+
+  function renderProjectHub() {
+    if (!projectHubList) return;
+    projectHubList.innerHTML = '';
+    if (!editingProjectId) {
+      projectHubList.innerHTML = '<p class="text-[11px] text-slate-600 italic">Enregistre d\'abord le projet pour y ranger des points.</p>';
+      projectHubInput?.setAttribute('disabled', 'true');
+      if (projectHubHint) projectHubHint.textContent = '';
+      return;
+    }
+    projectHubInput?.removeAttribute('disabled');
+    const facts = getHubFacts(currentUserId, `p:${editingProjectId}`);
+    if (!facts.length) {
+      projectHubList.innerHTML = '<p class="text-[11px] text-slate-600 italic">Aucun point. Dis à l\'IA « retiens que … » ou ajoute-le ici.</p>';
+    } else {
+      facts.forEach((fact, index) => {
+        const row = document.createElement('div');
+        row.className = 'flex items-start gap-2 bg-[#16181c] border border-slate-800 rounded-xl px-3 py-2';
+        const span = document.createElement('span');
+        span.className = 'flex-1 text-[11px] text-slate-200 whitespace-pre-wrap break-words';
+        span.textContent = fact;
+        const del = document.createElement('button');
+        del.type = 'button';
+        del.title = 'Supprimer ce point';
+        del.className = 'text-slate-500 hover:text-rose-300 cursor-pointer leading-none';
+        del.textContent = '✕';
+        del.addEventListener('click', () => {
+          removeHubFact(currentUserId, `p:${editingProjectId}`, index);
+          renderProjectHub();
+          renderProjects();
+          window.dispatchEvent(new CustomEvent('hub-changed'));
+        });
+        row.appendChild(span);
+        row.appendChild(del);
+        projectHubList.appendChild(row);
+      });
+    }
+    if (projectHubHint) {
+      projectHubHint.textContent = `${facts.length} point(s) réinjecté(s) dans le prompt des conversations du dossier.`;
+    }
+  }
+
+  function addProjectHubFact() {
+    const text = (projectHubInput?.value || '').trim();
+    if (!editingProjectId) return;
+    if (!text) { projectHubInput?.focus(); return; }
+    addHubFact(currentUserId, `p:${editingProjectId}`, text);
+    if (projectHubInput) projectHubInput.value = '';
+    renderProjectHub();
+    renderProjects();
+    window.dispatchEvent(new CustomEvent('hub-changed'));
+  }
+
+  projectHubAddBtn?.addEventListener('click', () => addProjectHubFact());
+  projectHubInput?.addEventListener('keydown', (e) => {
+    if ((e as KeyboardEvent).key === 'Enter') addProjectHubFact();
+  });
+
+  async function saveProjectFromModal() {
+    const name = (projectNameInput?.value || '').trim();
+    if (!name) {
+      projectNameInput?.focus();
+      return;
+    }
+    const saved = await upsertProject(
+      { id: editingProjectId ?? undefined, name, description: projectDescInput?.value || '' },
+      currentUserId
+    );
+    // Le projet créé/modifié devient le dossier actif des nouvelles conversations
+    await setActiveProjectId(saved.id, currentUserId);
+    closeProjectModal();
+    renderProjects();
+    renderChats();
+    window.dispatchEvent(new CustomEvent('project-changed', { detail: { id: saved.id } }));
+  }
+
+  newProjectBtn?.addEventListener('click', () => openProjectModal(null));
+  projectSaveBtn?.addEventListener('click', () => void saveProjectFromModal());
+  projectCancelBtn?.addEventListener('click', closeProjectModal);
+  projectModal?.addEventListener('click', (e) => {
+    if (e.target === projectModal) closeProjectModal();
+  });
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && projectModal && !projectModal.classList.contains('hidden')) closeProjectModal();
+  });
+
+  /** Rendu de la liste des projets (dossier + nom + nb de conversations). */
+  function renderProjects() {
+    if (!projectsList) return;
+    const projects = getProjects(currentUserId);
+    activeProjectId = getActiveProjectId(currentUserId);
+    projectsList.innerHTML = '';
+
+    if (projects.length === 0) {
+      projectsList.innerHTML = `<p class="text-[11px] text-slate-600 px-2 italic">Aucun projet — clique sur ＋</p>`;
+      return;
+    }
+
+    projects.forEach((project) => {
+      const count = getProjectChats(project.id, currentUserId).length;
+      const hubCount = getHubFacts(currentUserId, `p:${project.id}`).length;
+      const isActive = project.id === activeProjectId;
+      const row = document.createElement('div');
+      row.className = `group flex items-center justify-between px-3 py-2 rounded-xl transition cursor-pointer border ${
+        isActive
+          ? 'bg-cyan-950/40 text-cyan-200 border-cyan-500/40'
+          : 'text-slate-400 hover:bg-slate-800/40 hover:text-slate-200 border-transparent'
+      }`;
+      row.title = project.description || 'Aucune description';
+      row.innerHTML = `
+        <button type="button" class="open-project-btn flex items-center gap-2.5 min-w-0 flex-1 text-left bg-transparent border-0 p-0 cursor-pointer">
+          <svg class="w-4 h-4 ${isActive ? 'text-cyan-400' : 'text-slate-500'} shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 7a2 2 0 012-2h3l2 2h9a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2V7z"/>
+          </svg>
+          <span class="truncate">${project.name}</span>
+          <span class="text-[10px] text-slate-500 shrink-0">${count}</span>
+          ${hubCount ? `<span class="text-[10px] text-amber-400/80 shrink-0" title="Points du centre de données du projet">🗂️ ${hubCount}</span>` : ''}
+          ${isActive ? '<span class="text-[9px] text-cyan-400 shrink-0">● actif</span>' : ''}
+        </button>
+        <div class="hidden group-hover:flex items-center gap-1 shrink-0">
+          <button type="button" class="edit-project-btn hover:text-cyan-400 p-1 rounded hover:bg-slate-700/50 transition" title="Modifier (nom + description)">
+            <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/>
+            </svg>
+          </button>
+          <button type="button" class="del-project-btn hover:text-red-400 p-1 rounded hover:bg-slate-700/50 transition" title="Supprimer le projet (conversations conservées)">
+            <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/>
+            </svg>
+          </button>
+        </div>
+      `;
+
+      // Sélectionner le dossier → les nouvelles conversations y entrent
+      row.querySelector('.open-project-btn')?.addEventListener('click', () => {
+        void setActiveProjectId(project.id === activeProjectId ? null : project.id, currentUserId)
+          .then(() => {
+            renderProjects();
+            window.dispatchEvent(new CustomEvent('project-changed', { detail: { id: project.id } }));
+          });
+      });
+
+      row.querySelector('.edit-project-btn')?.addEventListener('click', (e) => {
+        e.stopPropagation();
+        openProjectModal(project.id);
+      });
+
+      row.querySelector('.del-project-btn')?.addEventListener('click', (e) => {
+        e.stopPropagation();
+        if (confirm(`Supprimer le projet "${project.name}" ?\n\nLes conversations du dossier sont conservées (elles seront juste détachées).`)) {
+          void removeProject(project.id, currentUserId).then(() => {
+            renderProjects();
+            renderChats();
+          });
+        }
+      });
+
+      projectsList.appendChild(row);
+    });
+  }
+
+  /** 📁 Menu « déplacer vers un projet » attaché à une conversation. */
+  function buildMoveMenu(chat: Chat): HTMLElement {
+    const menu = document.createElement('div');
+    menu.className = 'move-menu absolute right-1 top-9 z-40 w-44 bg-[#1b1e23] border border-slate-700/70 rounded-xl shadow-2xl p-1 space-y-0.5';
+    const projects = getProjects(currentUserId);
+    const currentProjectId = getProjectIdForChat(chat.id, currentUserId);
+
+    const addItem = (label: string, projectId: string | null, isActive: boolean) => {
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = `w-full text-left px-2.5 py-1.5 rounded-lg text-[11px] transition cursor-pointer ${
+        isActive ? 'text-cyan-300 bg-slate-800/80' : 'text-slate-300 hover:bg-slate-800'
+      }`;
+      btn.textContent = label;
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        void setChatProject(chat.id, projectId, currentUserId).then(() => {
+          renderProjects();
+          renderChats();
+        });
+      });
+      menu.appendChild(btn);
+    };
+
+    addItem('📂 Aucun projet', null, !currentProjectId);
+    projects.forEach((project) => addItem(` ${project.name}`, project.id, currentProjectId === project.id));
+    return menu;
+  }
+
   function renderChats() {
     if (!chatsList) return;
     // Historique strictement limité au compte courant (ou à l'espace anonyme)
     const chats: Chat[] = getChats(currentUserId);
     const activeId = getActiveChatId(currentUserId);
+    const projects = getProjects(currentUserId);
+    const chatProjectMap = getChatProjectMap(currentUserId);
 
-    if (chats.length === 0) {
+    if (chats.length === 0 && projects.length === 0) {
       chatsList.innerHTML = `<p class="text-[11px] text-slate-600 px-2 italic">Aucune conversation</p>`;
       return;
     }
 
     chatsList.innerHTML = '';
 
-    chats.forEach((chat) => {
+    // 📁 Dossiers d'abord (avec leurs conversations), puis les conversations libres
+    const groups: Array<{ project: Project | null; chats: Chat[] }> = projects.map((project) => ({
+      project,
+      chats: chats.filter((c) => chatProjectMap[c.id] === project.id),
+    }));
+    groups.push({ project: null, chats: chats.filter((c) => !chatProjectMap[c.id]) });
+
+    for (const group of groups) {
+      if (group.project) {
+        const header = document.createElement('div');
+        header.className = 'flex items-center gap-2 px-2 pt-2 pb-1 text-[10px] uppercase tracking-wider text-slate-500';
+        header.innerHTML = `<span class="truncate">📁 ${group.project.name}</span><span class="text-slate-600">${group.chats.length}</span>`;
+        chatsList.appendChild(header);
+      } else if (projects.length > 0 && group.chats.length > 0) {
+        const header = document.createElement('div');
+        header.className = 'px-2 pt-2 pb-1 text-[10px] uppercase tracking-wider text-slate-600';
+        header.textContent = 'Sans projet';
+        chatsList.appendChild(header);
+      }
+
+    for (const chat of group.chats) {
       const isActive = chat.id === activeId;
       const chatItem = document.createElement('div');
-      chatItem.className = `group w-full flex items-center justify-between px-3 py-2 rounded-xl transition cursor-pointer ${
+      chatItem.className = `group relative w-full flex items-center justify-between px-3 py-2 rounded-xl transition cursor-pointer ${
         isActive 
           ? 'bg-slate-800/90 text-cyan-300 font-medium border border-slate-700/60' 
           : 'text-slate-400 hover:bg-slate-800/40 hover:text-slate-200'
@@ -158,6 +483,11 @@
         </button>
 
         <div class="hidden group-hover:flex items-center gap-1 shrink-0">
+          <button type="button" class="move-chat-btn hover:text-cyan-400 p-1 rounded hover:bg-slate-700/50 transition" title="Déplacer dans un projet (dossier)">
+            <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 7a2 2 0 012-2h3l2 2h9a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2V7z"/>
+            </svg>
+          </button>
           <button type="button" class="rename-chat-btn hover:text-cyan-400 p-1 rounded hover:bg-slate-700/50 transition" title="Renommer">
             <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/>
@@ -200,6 +530,17 @@
         window.dispatchEvent(new CustomEvent('open-in-plugin', { detail: { id: chat.id } }));
       });
 
+      // 📁 Déplacer la conversation dans un projet (dossier) : le menu
+      // s'ouvre/se ferme au clic, et la description du projet part alors
+      // dans le prompt système de cette conversation.
+      chatItem.querySelector('.move-chat-btn')?.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const already = chatItem.querySelector('.move-menu');
+        if (already) { already.remove(); return; }
+        const menu = buildMoveMenu(chat);
+        chatItem.appendChild(menu);
+      });
+
       // Supprimer la conversation (local + cloud du compte)
       chatItem.querySelector('.delete-chat-btn')?.addEventListener('click', (e) => {
         e.stopPropagation();
@@ -213,11 +554,24 @@
       });
 
       chatsList.appendChild(chatItem);
-    });
+    }
+    }
   }
 
   // Écouter les événements globaux de mise à jour des conversations
   window.addEventListener('chats-updated', () => renderChats());
+  window.addEventListener('projects-updated', () => {
+    renderProjects();
+    renderChats();
+  });
+
+  // 🗂️ Le centre de données d'un projet a changé (point ajouté/supprimé)
+  // → on rafraîchit le badge 🗂️ de la liste et la section de la modale.
+  window.addEventListener('hub-changed', () => renderProjects());
+  window.addEventListener('data-hub-updated', () => {
+    renderProjects();
+    if (projectModal && !projectModal.classList.contains('hidden')) renderProjectHub();
+  });
 
   // Bouton Nouvelle Conversation
   newChatBtn?.addEventListener('click', () => {
@@ -338,6 +692,7 @@
     });
   });
 
-  // Rendu initial de l'historique
+  // Rendu initial de l'historique + des projets
+  renderProjects();
   renderChats();
 </script>

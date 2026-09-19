@@ -73,6 +73,7 @@ const cloudflareModel = getEnv('CLOUDFLARE_MODEL', '@cf/qwen/qwen3.8-27b');
           <button id="exportAllBtn" type="button" title="Exporter TOUTES les conversations en un seul Markdown" class="text-slate-400 hover:text-cyan-300 bg-slate-800/50 hover:bg-slate-800 border border-slate-700/50 px-2 py-1.5 rounded-lg text-[10px] font-medium transition cursor-pointer">📦</button>
           <button id="exportMdBtn" type="button" title="Exporter la conversation en Markdown" class="text-slate-400 hover:text-cyan-300 bg-slate-800/50 hover:bg-slate-800 border border-slate-700/50 px-2 py-1.5 rounded-lg text-[10px] font-medium transition cursor-pointer">⬇️ MD</button>
           <button id="actionLogBtn" type="button" title="Journal des actions appliquées dans Godot (mémoire du modèle)" class="text-slate-400 hover:text-violet-300 bg-slate-800/50 hover:bg-slate-800 border border-slate-700/50 px-2 py-1.5 rounded-lg text-[10px] font-medium transition cursor-pointer">📜 Journal</button>
+          <button id="dataHubBtn" type="button" title="Centre de données du dossier (projet ou conversation) : points importants + journal des actions" class="text-slate-400 hover:text-amber-300 bg-slate-800/50 hover:bg-slate-800 border border-slate-700/50 px-2 py-1.5 rounded-lg text-[10px] font-medium transition cursor-pointer">🗂️ Données</button>
         </div>
 
         <!-- Statut Godot + Quota -->
@@ -202,12 +203,26 @@ const cloudflareModel = getEnv('CLOUDFLARE_MODEL', '@cf/qwen/qwen3.8-27b');
         consumeTokenQuotaRemote,
         fetchTokenQuotaRemote,
         getSystemPrompt,
+        getProjects,
+        getProject,
+        getProjectForChat,
+        getProjectIdForChat,
+        getActiveProjectId,
+        setActiveProjectId,
+        setChatProject,
+        buildProjectPromptForChat,
       } from '../lib/userData';
       import {
         buildInjectedProjectContext,
         recordProjectConversation,
         recordProjectActions,
         getProjectMemory,
+        memoryScopeKey,
+        scopeLabel,
+        addHubFact,
+        getHubFacts,
+        removeHubFact,
+        clearScopeMemory,
       } from '../lib/projectMemory';
       import '../styles/global.css';
 
@@ -252,6 +267,25 @@ RÈGLES : 1) Jamais de texte hors JSON. 2) Nœuds/propriétés Godot 4.x RÉELS 
           if (userInstructions) {
             systemPrompt += `\n\n[Instructions personnalisées de l'utilisateur — à respecter STRICTEMENT]\n${userInstructions}`;
           }
+        } catch { /* repli silencieux */ }
+        // 📁 PROJET : la description du dossier de la conversation en cours
+        // (conversation web active, ou celle ouverte dans le dock Godot) est
+        // injectée ici → elle est donc « directement dans le système » de
+        // toutes les conversations rangées dans ce projet.
+        try {
+          const relevantChatId = (typeof pluginChatId === 'string' && pluginChatId) ? pluginChatId : currentChatId;
+          systemPrompt += buildProjectPromptForChat(relevantChatId, currentUserId);
+        } catch { /* repli silencieux */ }
+        // 🗂️ CENTRE DE DONNÉES : on rappelle au modèle qu'il peut ranger un
+        // point important et durable dans le dossier courant.
+        try {
+          const { label } = currentMemoryScope();
+          systemPrompt += `\n\n[CENTRE DE DONNÉES — ${label}]\n` +
+            `Quand un point important et DURABLE est décidé (préférence de l'utilisateur, contrainte technique, décision de design, état d'avancement), ` +
+            `ajoute dans "actions" une entrée {"type":"remember","text":"..."} avec une phrase courte et factuelle ` +
+            `(ex. {"type":"remember","text":"Le joueur veut un jeu très coloré, palette vive"}). ` +
+            `Ces points sont conservés dans le centre de données de ce dossier et te seront renvoyés à chaque demande. ` +
+            `Les actions "remember" ne modifient PAS la scène Godot.`;
         } catch { /* repli silencieux */ }
         return systemPrompt;
       }
@@ -373,7 +407,11 @@ RÈGLES : 1) Jamais de texte hors JSON. 2) Nœuds/propriétés Godot 4.x RÉELS 
         const list = (files && files.length ? files : latestProjectFiles) || [];
         // 🧠 Toggle « Contexte » : OFF → le modèle répond sans mémoire projet
         if (memoryOn) {
-          const memoryContext = buildInjectedProjectContext(currentUserId, activeModelKey, list);
+          const scope = currentMemoryScope();
+          const memoryContext = buildInjectedProjectContext(currentUserId, activeModelKey, list, {
+            scopeKey: scope.scopeKey,
+            scopeLabel: scope.label,
+          });
           if (memoryContext) return memoryContext;
         }
         if (!list.length) return '';
@@ -416,6 +454,60 @@ RÈGLES : 1) Jamais de texte hors JSON. 2) Nœuds/propriétés Godot 4.x RÉELS 
         const data = JSON.parse(event.data);
 
         if (data.type === "status") setGodotStatus(!!data.godot_connected);
+
+        // 🎮 Le dock Godot demande la LISTE de l'historique (+ les projets)
+        if (data.type === "history_request") {
+          sendHistoryToPlugin();
+          sendProjectsToPlugin();
+          return;
+        }
+
+        // 🎮 Le dock Godot veut OUVRIR une conversation précise : on lui
+        // transfère son contenu, et les prochains échanges du plugin
+        // continueront CETTE conversation (local + cloud).
+        if (data.type === "conversation_request" && typeof data.chat_id === 'string' && data.chat_id) {
+          pluginChatId = data.chat_id;
+          try { localStorage.setItem(pluginChatKey(), data.chat_id); } catch { /* ignore */ }
+          sendConversationToPlugin(data.chat_id);
+          sendProjectsToPlugin();
+          return;
+        }
+
+        // 🎮 Le dock change le PROJET actif (les nouvelles conversations entreront dedans)
+        if (data.type === "select_project") {
+          const targetProject = typeof data.project_id === 'string' && data.project_id ? data.project_id : null;
+          void setActiveProjectId(targetProject, currentUserId).then(() => sendProjectsToPlugin());
+          return;
+        }
+
+        // 🗂️ Le dock demande le CENTRE DE DONNÉES du dossier courant
+        // (onglet « 🗂️ Données » du dock) → on renvoie scope + points.
+        if (data.type === "hub_request") {
+          sendDataHubToPlugin();
+          return;
+        }
+
+        // 📌 Le dock AJOUTE un point au centre de données du dossier courant
+        // {type:"add_hub_fact", text:"…"} — le point est ensuite réinjecté
+        // dans le prompt système des prochaines demandes de ce dossier.
+        if (data.type === "add_hub_fact" && typeof data.text === 'string' && data.text.trim()) {
+          const { scopeKey, label } = currentMemoryScope();
+          addHubFact(currentUserId, scopeKey, data.text.trim());
+          sendDataHubToPlugin();
+          window.dispatchEvent(new CustomEvent('data-hub-updated'));
+          appendMessageUI('assistant', `📌 Point ajouté depuis Godot au centre de données de ${label} : « ${data.text.trim()} ».`, '🗂️ Données');
+          return;
+        }
+
+        // 🗑 Le dock RETIRE un point du centre de données courant
+        // {type:"remove_hub_fact", index:0}
+        if (data.type === "remove_hub_fact" && Number.isInteger(data.index)) {
+          const { scopeKey } = currentMemoryScope();
+          removeHubFact(currentUserId, scopeKey, Number(data.index));
+          sendDataHubToPlugin();
+          window.dispatchEvent(new CustomEvent('data-hub-updated'));
+          return;
+        }
 
         // Le plugin envoie son contexte dès la connexion, avant même une question.
         if (data.type === "context_response") {
@@ -552,8 +644,12 @@ RÈGLES : 1) Jamais de texte hors JSON. 2) Nœuds/propriétés Godot 4.x RÉELS 
           const contentPlugin = bubblePlugin.querySelector('.message-content');
           if (contentPlugin) contentPlugin.textContent = String(result.explanation || '');
           rememberProjectConversation('assistant', result.explanation, modelKey);
-          // 🧠 MÉMOIRE : les actions venues du plugin entrent aussi au journal.
-          if (Array.isArray(result.actions) && result.actions.length) recordProjectActions(currentUserId, modelKey, result.actions);
+          // 🗂️ MÉMOIRE PAR SCOPE : les actions « remember » alimentent le
+          // centre de données du projet/conversation et ne partent pas à Godot.
+          const pluginScope = currentMemoryScope();
+          const pluginActions = consumeRememberActions(Array.isArray(result.actions) ? result.actions : []);
+          if (pluginActions.length) recordProjectActions(currentUserId, modelKey, pluginActions, pluginScope.scopeKey);
+          if (pluginActions.length !== (Array.isArray(result.actions) ? result.actions.length : 0)) sendDataHubToPlugin();
           // QUOTA JUSTE : décompte des tokens OUTPUT estimés de la réponse.
           void consumeTokenQuotaRemote(0, Math.max(1, Math.ceil(String(result.explanation || '').length / 4)), QUOTA_WINDOW_HOURS, DEFAULT_INPUT_TOKENS, DEFAULT_OUTPUT_TOKENS)
             .then(() => { void refreshTokenQuotaDisplay(); });
@@ -564,7 +660,7 @@ RÈGLES : 1) Jamais de texte hors JSON. 2) Nœuds/propriétés Godot 4.x RÉELS 
             type: "ai_result",
             request_id: requestId,
             explanation: result.explanation,
-            actions: result.actions,
+            actions: pluginActions,
             model: selectedModelName(modelKey)
           }));
 
@@ -604,16 +700,117 @@ RÈGLES : 1) Jamais de texte hors JSON. 2) Nœuds/propriétés Godot 4.x RÉELS 
         localStorage.setItem(pluginChatKey(), chat.id);
         // Historique transféré au dock (30 derniers messages max)
         const history = chat.messages.slice(-30).map((m: ChatMessage) => ({ role: m.role, text: m.text }));
+        const projectOfChat = getProjectForChat(chat.id, currentUserId);
         ws.send(JSON.stringify({
           type: "open_conversation",
           chat_id: chat.id,
           title: chat.title,
+          project_name: projectOfChat?.name || '',
+          project_description: projectOfChat?.description || '',
           messages: history,
         }));
+        // Le dock reçoit AUSSI tout l'historique + les projets : il peut donc
+        // ouvrir n'importe quelle conversation sans repasser par l'app.
+        sendHistoryToPlugin();
+        sendProjectsToPlugin();
         const bubble = appendMessageUI('assistant', '', 'Système');
         const content = bubble.querySelector('.message-content');
         if (content) content.textContent = `🔌 Conversation « ${chat.title} » ouverte dans le plugin Godot (${history.length} message(s) transférés). Continue-la depuis le dock !`;
       });
+
+      // ============================================================
+      // 🎮 APP ↔ DOCK GODOT : historique + projets
+      // Le dock peut demander la LISTE des conversations, en ouvrir une
+      // précise, ou choisir le projet des nouvelles conversations.
+      // ============================================================
+      function sendHistoryToPlugin() {
+        if (ws.readyState !== WebSocket.OPEN) return;
+        ws.send(JSON.stringify({
+          type: 'history_list',
+          chats: getChats(currentUserId).map((c: Chat) => ({
+            id: c.id,
+            title: c.title,
+            updatedAt: c.updatedAt ?? 0,
+            messageCount: Array.isArray(c.messages) ? c.messages.length : 0,
+            project_id: getProjectIdForChat(c.id, currentUserId) || '',
+          })),
+          active_chat_id: pluginChatId || currentChatId || '',
+        }));
+      }
+
+      function sendProjectsToPlugin() {
+        if (ws.readyState !== WebSocket.OPEN) return;
+        ws.send(JSON.stringify({
+          type: 'projects_list',
+          projects: getProjects(currentUserId).map((p) => ({ id: p.id, name: p.name, description: p.description })),
+          active_project_id: getActiveProjectId(currentUserId) || '',
+        }));
+      }
+
+      /** Envoie le CONTENU complet d'une conversation au dock (il l'affiche). */
+      function sendConversationToPlugin(chatId: string) {
+        const chat = getChats(currentUserId).find((c: Chat) => c.id === chatId);
+        if (!chat || ws.readyState !== WebSocket.OPEN) return;
+        const project = getProjectForChat(chat.id, currentUserId);
+        ws.send(JSON.stringify({
+          type: 'open_conversation',
+          chat_id: chat.id,
+          title: chat.title,
+          project_name: project?.name || '',
+          project_description: project?.description || '',
+          messages: chat.messages.slice(-60).map((m: ChatMessage) => ({ role: m.role, text: m.text })),
+        }));
+      }
+
+      // ============================================================
+      // 🗂️ SCOPE MÉMOIRE + CENTRE DE DONNÉES (par projet / conversation)
+      // Le journal d'actions et les points importants sont rangés PAR SCOPE :
+      //   • conversation rattachée à un projet → scope du PROJET (partagé)
+      //   • conversation libre                 → scope de la CONVERSATION
+      // → deux projets de jeu ne se mélangent plus, sans rien perdre de la
+      //   mémoire (le journal reste complet à l'intérieur de son périmètre).
+      // ============================================================
+      function currentMemoryScope(): { scopeKey: string; label: string } {
+        const chatId = (typeof pluginChatId === 'string' && pluginChatId) ? pluginChatId : currentChatId;
+        const project = getProjectForChat(chatId, currentUserId);
+        const scopeKey = memoryScopeKey(chatId, project?.id ?? null);
+        const chat = chatId ? getChats(currentUserId).find((c: Chat) => c.id === chatId) : undefined;
+        return { scopeKey, label: scopeLabel(scopeKey, project?.name, chat?.title) };
+      }
+
+      /**
+       * 📌 Actions « remember » : l'IA range ELLE-MÊME un point important dans
+       * le centre de données du dossier (projet/conversation). Ces entrées ne
+       * partent jamais vers Godot (elles ne touchent pas la scène) : elles sont
+       * stockées puis réinjectées dans le prompt système des demandes suivantes.
+       */
+      function consumeRememberActions(actions: any[]): any[] {
+        if (!Array.isArray(actions) || !actions.length) return actions;
+        const { scopeKey } = currentMemoryScope();
+        const rest: any[] = [];
+        for (const action of actions) {
+          const type = String(action?.type || '');
+          if (type === 'remember' || type === 'datacenter' || type === 'note') {
+            const text = String(action?.text || action?.content || action?.note || '');
+            if (text.trim()) addHubFact(currentUserId, scopeKey, text);
+            continue;
+          }
+          rest.push(action);
+        }
+        return rest;
+      }
+
+      /** Envoie au dock le centre de données + la portée mémoire courante. */
+      function sendDataHubToPlugin() {
+        if (ws.readyState !== WebSocket.OPEN) return;
+        const { scopeKey, label } = currentMemoryScope();
+        ws.send(JSON.stringify({
+          type: 'data_hub',
+          scope: scopeKey,
+          label,
+          facts: getHubFacts(currentUserId, scopeKey),
+        }));
+      }
 
       // (Secours : vision Cloudflare + texte NVIDIA NIM — voir callNvidia.)
 
@@ -1261,6 +1458,178 @@ Ne décris que l'image fournie. Ne produis pas de code ni d'actions JSON. Sois t
         appendMessageUI('assistant', lines.join('\n'), '📜 Journal');
       });
 
+      // ============================================================
+      // 🗂️ CENTRE DE DONNÉES — un espace mémoire PAR DOSSIER (projet, sinon
+      // conversation). C'est la version VISIBLE de ce que l'IA retient :
+      //   • points importants  → réinjectés dans le prompt système
+      //   • journal des actions réellement appliquées dans ce dossier
+      // Le dock Godot reçoit exactement le même contenu via « data_hub ».
+      // ============================================================
+      let dataHubModal: HTMLDivElement | null = null;
+
+      /** Journal d'actions du scope courant (et non plus du compte entier). */
+      function scopedActionLog(scopeKey: string): string[] {
+        const scopes = getProjectMemory(currentUserId).scopes || {};
+        return (scopes[scopeKey]?.actionLog || []).slice(-40);
+      }
+
+      function buildDataHubModal(): HTMLDivElement {
+        const modal = document.createElement('div');
+        modal.id = 'dataHubModal';
+        modal.className = 'hidden fixed inset-0 z-50 bg-black/60 backdrop-blur-sm items-center justify-center p-6';
+        modal.innerHTML = `
+          <div class="w-full max-w-lg bg-[#1b1e23] border border-slate-700/70 rounded-2xl shadow-2xl p-5 space-y-4 max-h-[85vh] overflow-y-auto">
+            <div class="flex items-start justify-between gap-3">
+              <div>
+                <h3 class="text-sm font-semibold text-slate-100">🗂️ Centre de données</h3>
+                <p id="dataHubScopeLabel" class="text-[11px] text-slate-500 mt-1"></p>
+              </div>
+              <button type="button" id="dataHubCloseBtn" class="text-slate-400 hover:text-slate-100 text-lg leading-none cursor-pointer">✕</button>
+            </div>
+            <div class="space-y-1">
+              <label class="text-[11px] text-slate-500 uppercase tracking-wider">Points importants (injectés dans le prompt)</label>
+              <div id="dataHubFacts" class="space-y-1"></div>
+            </div>
+            <div class="flex items-center gap-2">
+              <input id="dataHubInput" type="text" placeholder="Ex : le joueur utilise CharacterBody2D, jamais RigidBody2D"
+                class="flex-1 bg-[#16181c] border border-slate-800 text-xs text-slate-200 placeholder-slate-600 px-3 py-2.5 rounded-xl focus:outline-none focus:border-cyan-500/60 transition" />
+              <button id="dataHubAddBtn" type="button" class="text-xs font-medium text-white bg-cyan-600 hover:bg-cyan-500 px-4 py-2.5 rounded-xl transition cursor-pointer">Ajouter</button>
+            </div>
+            <div class="space-y-1">
+              <label class="text-[11px] text-slate-500 uppercase tracking-wider">Journal des actions appliquées dans ce dossier</label>
+              <div id="dataHubLog" class="space-y-1 text-[11px] text-slate-400 max-h-40 overflow-y-auto"></div>
+            </div>
+            <div class="flex flex-wrap justify-between items-center gap-2 pt-1">
+              <button id="dataHubClearBtn" type="button" class="text-[11px] text-rose-300 hover:text-rose-200 bg-rose-500/10 hover:bg-rose-500/20 border border-rose-500/30 px-3 py-2 rounded-xl transition cursor-pointer">🗑 Vider ce dossier</button>
+              <button id="dataHubSendBtn" type="button" class="text-[11px] text-slate-300 hover:text-slate-100 bg-slate-800/60 hover:bg-slate-800 border border-slate-700/50 px-3 py-2 rounded-xl transition cursor-pointer">🎮 Envoyer au dock Godot</button>
+            </div>
+          </div>`;
+        document.body.appendChild(modal);
+        return modal;
+      }
+
+      /** Câble les boutons de la modale (fermeture, ajout, vidage, envoi). */
+      function wireDataHubModal(modal: HTMLDivElement) {
+        modal.addEventListener('click', (e) => { if (e.target === modal) closeDataHub(); });
+        modal.querySelector('#dataHubCloseBtn')?.addEventListener('click', () => closeDataHub());
+        modal.querySelector('#dataHubAddBtn')?.addEventListener('click', () => addFactFromHubInput());
+        modal.querySelector('#dataHubInput')?.addEventListener('keydown', (e) => {
+          if ((e as KeyboardEvent).key === 'Enter') addFactFromHubInput();
+        });
+        modal.querySelector('#dataHubClearBtn')?.addEventListener('click', () => {
+          const { scopeKey, label } = currentMemoryScope();
+          if (!confirm(`Vider le centre de données ET le journal de ${label} ?`)) return;
+          clearScopeMemory(currentUserId, scopeKey);
+          renderDataHub();
+          sendDataHubToPlugin();
+          notifyHubChanged();
+          appendMessageUI('assistant', `🗑 Centre de données vidé (${label}).`, '🗂️ Données');
+        });
+        modal.querySelector('#dataHubSendBtn')?.addEventListener('click', () => {
+          sendDataHubToPlugin();
+          appendMessageUI('assistant', '🎮 Centre de données envoyé au dock Godot (onglet « 🗂️ Données »).', '🗂️ Données');
+        });
+      }
+
+      function addFactFromHubInput() {
+        const input = document.getElementById('dataHubInput') as HTMLInputElement | null;
+        const text = (input?.value || '').trim();
+        if (!text) { input?.focus(); return; }
+        const { scopeKey, label } = currentMemoryScope();
+        addHubFact(currentUserId, scopeKey, text);
+        if (input) input.value = '';
+        renderDataHub();
+        sendDataHubToPlugin();
+        notifyHubChanged();
+        appendMessageUI('assistant', `📌 Point ajouté au centre de données de ${label} : « ${text} ».`, '🗂️ Données');
+      }
+
+      /** Prévient la Sidebar (badge 🗂️ sur les projets). */
+      function notifyHubChanged() {
+        window.dispatchEvent(new CustomEvent('data-hub-updated'));
+      }
+
+      /** (Re)remplit la modale : points du dossier + journal d'actions du dossier. */
+      function renderDataHub() {
+        const { scopeKey, label } = currentMemoryScope();
+        const labelEl = document.getElementById('dataHubScopeLabel');
+        if (labelEl) labelEl.textContent = `Dossier : ${label} · portée « ${scopeKey} ». Ces points partent dans le prompt système des prochaines demandes.`;
+
+        const factsEl = document.getElementById('dataHubFacts');
+        if (factsEl) {
+          factsEl.innerHTML = '';
+          const facts = getHubFacts(currentUserId, scopeKey);
+          if (!facts.length) {
+            factsEl.innerHTML = '<p class="text-[11px] text-slate-500 leading-relaxed">Aucun point pour l\'instant. Ajoute-en un, ou dis simplement à l\'IA « retiens que … » : elle le rangera elle-même ici pour les prochaines demandes.</p>';
+          } else {
+            facts.forEach((fact, index) => {
+              const row = document.createElement('div');
+              row.className = 'flex items-start gap-2 bg-[#16181c] border border-slate-800 rounded-xl px-3 py-2';
+              const span = document.createElement('span');
+              span.className = 'flex-1 text-xs text-slate-200 whitespace-pre-wrap break-words';
+              span.textContent = fact;
+              const del = document.createElement('button');
+              del.type = 'button';
+              del.title = 'Supprimer ce point';
+              del.className = 'text-slate-500 hover:text-rose-300 cursor-pointer leading-none';
+              del.textContent = '✕';
+              del.addEventListener('click', () => {
+                removeHubFact(currentUserId, scopeKey, index);
+                renderDataHub();
+                sendDataHubToPlugin();
+                notifyHubChanged();
+              });
+              row.appendChild(span);
+              row.appendChild(del);
+              factsEl.appendChild(row);
+            });
+          }
+        }
+
+        const logEl = document.getElementById('dataHubLog');
+        if (logEl) {
+          logEl.innerHTML = '';
+          const log = scopedActionLog(scopeKey);
+          if (!log.length) {
+            logEl.innerHTML = '<p class="text-[11px] text-slate-500">Aucune action appliquée dans ce dossier pour le moment.</p>';
+          } else {
+            for (const line of [...log].reverse()) {
+              const p = document.createElement('p');
+              p.className = 'whitespace-pre-wrap break-words';
+              p.textContent = '• ' + line;
+              logEl.appendChild(p);
+            }
+          }
+        }
+      }
+
+      function openDataHub() {
+        if (!dataHubModal) {
+          dataHubModal = buildDataHubModal();
+          wireDataHubModal(dataHubModal);
+        }
+        dataHubModal.classList.remove('hidden');
+        dataHubModal.classList.add('flex');
+        renderDataHub();
+        (document.getElementById('dataHubInput') as HTMLInputElement | null)?.focus();
+      }
+
+      function closeDataHub() {
+        dataHubModal?.classList.add('hidden');
+        dataHubModal?.classList.remove('flex');
+      }
+
+      document.getElementById('dataHubBtn')?.addEventListener('click', () => openDataHub());
+      document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape' && dataHubModal && !dataHubModal.classList.contains('hidden')) closeDataHub();
+      });
+      // Le dossier change (autre conversation, nouveau chat, projet) → bon hub affiché
+      ['select-chat', 'new-chat', 'project-changed'].forEach((evt) =>
+        window.addEventListener(evt, () => {
+          if (dataHubModal && !dataHubModal.classList.contains('hidden')) renderDataHub();
+        })
+      );
+
       // 📊 Panneau de stats (bouton header)
       document.getElementById('statsBtn')?.addEventListener('click', () => {
         const today = new Date().toISOString().slice(0, 10);
@@ -1376,7 +1745,11 @@ Ne décris que l'image fournie. Ne produis pas de code ni d'actions JSON. Sois t
           const result = await callGemini(modelKey, fullPrompt, currentScreenshot, currentScreenshotMime);
           typing.remove();
           pendingAppRequests.delete(requestId);
-          const actions = Array.isArray(result.actions) ? result.actions : [];
+          const webScope = currentMemoryScope();
+          // 🗂️ Les actions « remember » vont au CENTRE DE DONNÉES du dossier
+          // (projet ou conversation) et ne sont pas appliquées dans Godot.
+          const rawActions = Array.isArray(result.actions) ? result.actions : [];
+          const actions = consumeRememberActions(rawActions);
           let txt = String(result.explanation || '');
           if (actions.length) txt += `\n\n✅ ${actions.length} action(s) appliquée(s) dans Godot.`;
           // QUOTA JUSTE : on décompte aussi les tokens OUTPUT estimés de la
@@ -1388,7 +1761,8 @@ Ne décris que l'image fournie. Ne produis pas de code ni d'actions JSON. Sois t
           playChime();
           // 🧠 MÉMOIRE : le modèle doit savoir ce qui a DÉJÀ été créé dans la
           // scène pour CONTINUER le jeu au lieu de tout refaire.
-          if (actions.length) recordProjectActions(currentUserId, modelKey, actions);
+          if (actions.length) recordProjectActions(currentUserId, modelKey, actions, webScope.scopeKey);
+          if (actions.length !== rawActions.length) sendDataHubToPlugin();
           const bubble = appendMessageUI('assistant', '', selectedModelName(modelKey));
           const content = bubble.querySelector('.message-content');
           if (content) content.textContent = txt;
@@ -1749,6 +2123,9 @@ Ne décris que l'image fournie. Ne produis pas de code ni d'actions JSON. Sois t
           setActiveChatId(currentChatId, currentUserId);
           const newTitle = role === 'user' ? (text.slice(0, 30) + (text.length > 30 ? '...' : '')) : 'Nouvelle conversation';
           await upsertChat({ id: currentChatId, title: newTitle, messages: [message] }, currentUserId);
+          // 📁 Toute nouvelle conversation entre dans le PROJET ACTIF (dossier)
+          const activeProjectId = getActiveProjectId(currentUserId);
+          if (activeProjectId) await setChatProject(currentChatId, activeProjectId, currentUserId);
           return;
         }
 
@@ -1794,6 +2171,9 @@ Ne décris que l'image fournie. Ne produis pas de code ni d'actions JSON. Sois t
               title: '🔌 ' + question.slice(0, 30) + (question.length > 30 ? '...' : ''),
               messages: [],
             };
+            // 📁 La nouvelle conversation du plugin entre dans le PROJET ACTIF
+            const activeProjectId = getActiveProjectId(currentUserId);
+            if (activeProjectId) await setChatProject(pluginChatId, activeProjectId, currentUserId);
           }
 
           chat.messages.push({ role: 'user', text: question, modelName: '🔌 Plugin Godot' });
