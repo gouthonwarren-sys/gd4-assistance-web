@@ -636,6 +636,7 @@ RÈGLES : 1) Jamais de texte hors JSON. 2) Nœuds/propriétés Godot 4.x RÉELS 
             return;
           }
           rememberProjectConversation('user', data.prompt || '', modelKey);
+          autoCaptureMemoryHint(data.prompt || '');
           const typingPlugin = appendMessageUI('assistant', '<i>⏳ Réflexion en cours…</i>', 'Plugin Godot');
           const result = await callGemini(modelKey, (data.prompt || '') + fileContext, data.image || null, data.image_mime || 'image/png');
           typingPlugin.remove();
@@ -798,6 +799,27 @@ RÈGLES : 1) Jamais de texte hors JSON. 2) Nœuds/propriétés Godot 4.x RÉELS 
           rest.push(action);
         }
         return rest;
+      }
+
+      /**
+       * 📌 FILET DE SÉCURITÉ MÉMOIRE : si l'utilisateur demande explicitement de
+       * retenir quelque chose (« retiens que… », « n'oublie pas… ») et que le
+       * modèle a oublié l'action « remember », on range quand même la phrase
+       * dans le centre de données du dossier. Rien n'est perdu.
+       */
+      const MEMORY_HINT_RE = /(retiens|souviens[-\s]?toi|m[ée]morise|n'?oublie pas|note bien|note que|rappelle[-\s]?toi|garde en m[ée]moire)/i;
+
+      function autoCaptureMemoryHint(userText: string) {
+        const cleaned = (userText || '').replace(/\s+/g, ' ').trim();
+        if (!cleaned || cleaned.length > 400) return;
+        if (!MEMORY_HINT_RE.test(cleaned)) return;
+        const { scopeKey, label } = currentMemoryScope();
+        const already = getHubFacts(currentUserId, scopeKey);
+        if (already.some((f) => f.toLowerCase() === cleaned.toLowerCase())) return;
+        addHubFact(currentUserId, scopeKey, cleaned);
+        sendDataHubToPlugin();
+        notifyHubChanged();
+        appendMessageUI('assistant', `📌 Retenu dans le centre de données de ${label} : « ${cleaned} ».`, '🗂️ Données');
       }
 
       /** Envoie au dock le centre de données + la portée mémoire courante. */
@@ -1727,6 +1749,7 @@ Ne décris que l'image fournie. Ne produis pas de code ni d'actions JSON. Sois t
           return;
         }
         rememberProjectConversation('user', prompt, modelKey);
+        autoCaptureMemoryHint(prompt);
         // Affiche le message utilisateur + ENREGISTREMENT de la conversation
         appendMessageUI('user', prompt);
         void saveMessageToStorage('user', prompt, modelKey);

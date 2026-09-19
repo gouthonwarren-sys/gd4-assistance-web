@@ -357,7 +357,9 @@ export function buildInjectedProjectContext(
     sections.push(`[Mémoire globale du projet]\n${memory.globalSummary}`);
   }
 
-  // 📓 JOURNAL DES ACTIONS — recadré sur le scope courant (projet/conversation)
+  // 📓 JOURNAL DES ACTIONS — recadré sur le scope courant (projet/conversation).
+  // Le journal reste COMPLET et consultable dans l'app (bouton 📜 Journal) : il
+  // n'est simplement plus injecté d'un projet de jeu vers un autre.
   const scopedLog = scope?.actionLog ?? [];
   if (scopedLog.length) {
     sections.push(
@@ -366,20 +368,22 @@ export function buildInjectedProjectContext(
     );
   }
 
-  // Filet de sécurité (aucune perte d'efficacité) : si le journal du scope est
-  // encore court, on rappelle les dernières actions des AUTRES scopes, sous une
-  // étiquette claire, pour que le modèle vérifie avant de recréer un nœud.
+  // Filet de sécurité (aucune perte d'efficacité) : si le journal du dossier est
+  // encore court, on rappelle les actions des CONVERSATIONS libres — JAMAIS
+  // celles d'un AUTRE PROJET (deux jeux ne se mélangent plus). Ces lignes servent
+  // seulement de garde-fou « ne recrée pas un nœud qui existe déjà ».
   if (scopedLog.length < 12) {
-    const othersLog = Object.entries(memory.scopes)
-      .filter(([key]) => key !== scopeKey)
-      .flatMap(([, value]) => value.actionLog.slice(-15))
-      .concat(memory.actionLog.slice(-20));
-    const uniqueOthers: string[] = [];
-    for (const entry of othersLog) if (!uniqueOthers.includes(entry)) uniqueOthers.push(entry);
-    if (uniqueOthers.length) {
+    const otherChatsLog: string[] = [];
+    for (const [key, value] of Object.entries(memory.scopes)) {
+      if (key === scopeKey || key.startsWith('p:')) continue;
+      for (const entry of value.actionLog.slice(-10)) {
+        if (!otherChatsLog.includes(entry)) otherChatsLog.push(entry);
+      }
+    }
+    if (otherChatsLog.length) {
       sections.push(
-        `[Journal GLOBAL (autres conversations/projets — À VÉRIFIER avant de recréer un nœud ou un script, mais NE PAS l'appliquer à ${label} sans confirmation)]\n` +
-        uniqueOthers.slice(-25).join('\n')
+        `[Journal d'autres CONVERSATIONS libres (AUCUN autre projet n'est mélangé ici — À VÉRIFIER avant de recréer un nœud ou un script, mais NE L'APPLIQUER À ${label} QUE sur confirmation)]\n` +
+        otherChatsLog.slice(-20).join('\n')
       );
     }
   }
