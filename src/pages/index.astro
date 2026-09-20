@@ -55,6 +55,23 @@ const cloudflareModel = getEnv('CLOUDFLARE_MODEL', '@cf/qwen/qwen3.8-27b');
     <!-- Zone principale -->
     <main class="flex-1 flex flex-col h-full min-w-0 relative bg-[#0e1013] overflow-hidden">
 
+      <!-- 🟠 BANDEAU PROTOTYPE — clique pour déplier. Texte éditable dans
+           src/lib/prototypeNotice.ts (PROTOTYPE_TEXT + PROTOTYPE_EXTRA). -->
+      <div id="prototypeBanner" class="shrink-0 w-full border-b border-amber-500/40 bg-gradient-to-r from-amber-500/15 via-orange-500/20 to-amber-500/15">
+        <button id="prototypeBannerToggle" type="button" aria-expanded="false"
+          class="w-full flex items-center gap-2 px-4 py-2 text-left cursor-pointer hover:bg-amber-500/10 transition">
+          <span class="text-sm text-amber-400">🟠</span>
+          <span id="prototypeBannerTitle" class="flex-1 text-[11px] font-semibold text-amber-200 truncate">Projet en cours de développement (prototype)</span>
+          <span id="prototypeBannerHint" class="hidden sm:inline text-[10px] text-amber-300/80 shrink-0">clique pour les détails</span>
+          <svg id="prototypeBannerChevron" class="w-3.5 h-3.5 shrink-0 text-amber-300 transition-transform" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
+          </svg>
+        </button>
+        <div id="prototypeBannerBody" class="hidden px-4 pb-3">
+          <p id="prototypeBannerText" class="text-[11px] leading-relaxed text-amber-100/90 whitespace-pre-line"></p>
+        </div>
+      </div>
+
       <!-- Header minimaliste -->
       <header class="h-16 px-8 flex items-center justify-between shrink-0 border-b border-slate-800/40 w-full">
         <div class="flex items-center gap-2 bg-[#16181c] border border-slate-800 px-3 py-1.5 rounded-xl text-xs font-medium text-slate-300">
@@ -224,6 +241,7 @@ const cloudflareModel = getEnv('CLOUDFLARE_MODEL', '@cf/qwen/qwen3.8-27b');
         removeHubFact,
         clearScopeMemory,
       } from '../lib/projectMemory';
+      import { PROTOTYPE_TITLE, PROTOTYPE_TEXT, PROTOTYPE_EXTRA } from '../lib/prototypeNotice';
       import '../styles/global.css';
 
       const runtimeConfig = document.body.dataset;
@@ -1586,7 +1604,7 @@ Ne décris que l'image fournie. Ne produis pas de code ni d'actions JSON. Sois t
       function renderDataHub() {
         const { scopeKey, label } = currentMemoryScope();
         const labelEl = document.getElementById('dataHubScopeLabel');
-        if (labelEl) labelEl.textContent = `Dossier : ${label} · portée « ${scopeKey} » · 💾 enregistré dans ton compte · les points d'une conversation qui rejoint un projet sont fusionnés dans le projet · réinjecté dans le prompt (l'IA en ajoute elle-même).`;
+        if (labelEl) labelEl.textContent = `Dossier : ${label} · portée « ${scopeKey} » · 💾 enregistré dans ton compte · les points d'une conversation qui rejoint un projet sont fusionnés dans le projet · réinjectés dans le prompt (l'IA en ajoute elle-même).`;
 
         const factsEl = document.getElementById('dataHubFacts');
         if (factsEl) {
@@ -1670,6 +1688,37 @@ Ne décris que l'image fournie. Ne produis pas de code ni d'actions JSON. Sois t
         try { const raw = JSON.parse(localStorage.getItem('gd4_usage_stats') || 'null'); if (raw && raw.day === today) s = raw; } catch { /* ignore */ }
         appendMessageUI('assistant', `📊 Usage du jour :\n• ${s.messages} message(s) envoyé(s)\n• ~${Number(s.inputTokens).toLocaleString('fr-FR')} tokens input estimés\n• ~${Number(s.outputTokens).toLocaleString('fr-FR')} tokens output estimés\n(remis à zéro chaque jour)`, '📊 Stats');
       });
+
+      // 🟠 BANDEAU PROTOTYPE — le texte vient de src/lib/prototypeNotice.ts
+      // (PROTOTYPE_TEXT + PROTOTYPE_EXTRA : c'est là que tu écris tes phrases).
+      (function initPrototypeBanner() {
+        const banner = document.getElementById('prototypeBanner');
+        if (!banner) return;
+        const titleEl = document.getElementById('prototypeBannerTitle');
+        const textEl = document.getElementById('prototypeBannerText');
+        const body = document.getElementById('prototypeBannerBody');
+        const chevron = document.getElementById('prototypeBannerChevron');
+        const toggle = document.getElementById('prototypeBannerToggle');
+        const hint = document.getElementById('prototypeBannerHint');
+        const extra = Array.isArray(PROTOTYPE_EXTRA) ? PROTOTYPE_EXTRA.filter((l) => typeof l === 'string' && l.trim()) : [];
+        if (titleEl) titleEl.textContent = PROTOTYPE_TITLE;
+        if (textEl) textEl.textContent = [PROTOTYPE_TEXT, ...(extra.length ? ['', ...extra] : [])].join('\n');
+        const KEY = 'gd4_prototype_open';
+        const apply = (open: boolean) => {
+          body?.classList.toggle('hidden', !open);
+          chevron?.classList.toggle('rotate-180', open);
+          toggle?.setAttribute('aria-expanded', open ? 'true' : 'false');
+          if (hint) hint.textContent = open ? 'clique pour replier' : 'clique pour les détails';
+          try { localStorage.setItem(KEY, open ? '1' : '0'); } catch { /* ignore */ }
+        };
+        let open = false;
+        try { open = localStorage.getItem(KEY) === '1'; } catch { /* ignore */ }
+        apply(open);
+        toggle?.addEventListener('click', () => {
+          const isOpen = !(body?.classList.contains('hidden') ?? true);
+          apply(!isOpen);
+        });
+      })();
 
       // 🔊 Lire une réponse à voix haute (synthèse vocale) — nouveauté GD4
       document.addEventListener('click', (e) => {
