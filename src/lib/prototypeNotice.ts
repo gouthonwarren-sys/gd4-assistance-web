@@ -17,6 +17,14 @@
 
 export const PROTOTYPE_TITLE = 'Projet en cours de développement (prototype) — clique pour en savoir plus';
 
+/**
+ * 🔢 Version du texte du bandeau.
+ * Incrémente ce numéro (1 → 2 → 3…) quand tu modifies PROTOTYPE_TEXT : le
+ * bandeau RÉAPPARAÎTRA automatiquement chez quelqu'un qui l'avait retiré.
+ * Si tu ne changes rien, un utilisateur qui a cliqué ✕ ne le revoit plus.
+ */
+export const PROTOTYPE_VERSION = '1';
+
 export const PROTOTYPE_TEXT = [
   "GD4 Assistant fonctionne, mais ce n'est pas encore un projet vraiment bien élaboré : c'est un prototype publié tel quel.",
   '',

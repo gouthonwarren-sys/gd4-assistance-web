@@ -58,8 +58,9 @@ const cloudflareModel = getEnv('CLOUDFLARE_MODEL', '@cf/qwen/qwen3.8-27b');
       <!-- 🟠 BANDEAU PROTOTYPE — clique pour déplier. Texte éditable dans
            src/lib/prototypeNotice.ts (PROTOTYPE_TEXT + PROTOTYPE_EXTRA). -->
       <div id="prototypeBanner" class="shrink-0 w-full border-b border-amber-500/40 bg-gradient-to-r from-amber-500/15 via-orange-500/20 to-amber-500/15">
+        <div class="w-full flex items-center gap-1">
         <button id="prototypeBannerToggle" type="button" aria-expanded="false"
-          class="w-full flex items-center gap-2 px-4 py-2 text-left cursor-pointer hover:bg-amber-500/10 transition">
+          class="flex-1 flex items-center gap-2 px-4 py-2 text-left cursor-pointer hover:bg-amber-500/10 transition">
           <span class="text-sm text-amber-400">🟠</span>
           <span id="prototypeBannerTitle" class="flex-1 text-[11px] font-semibold text-amber-200 truncate">Projet en cours de développement (prototype)</span>
           <span id="prototypeBannerHint" class="hidden sm:inline text-[10px] text-amber-300/80 shrink-0">clique pour les détails</span>
@@ -67,6 +68,9 @@ const cloudflareModel = getEnv('CLOUDFLARE_MODEL', '@cf/qwen/qwen3.8-27b');
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
           </svg>
         </button>
+        <button id="prototypeBannerClose" type="button" title="Retirer cette notice"
+          class="shrink-0 mr-2 px-2 py-1 rounded-lg text-amber-300/80 hover:text-amber-100 hover:bg-amber-500/20 text-xs transition cursor-pointer">✕</button>
+        </div>
         <div id="prototypeBannerBody" class="hidden px-4 pb-3">
           <p id="prototypeBannerText" class="text-[11px] leading-relaxed text-amber-100/90 whitespace-pre-line"></p>
         </div>
@@ -241,7 +245,7 @@ const cloudflareModel = getEnv('CLOUDFLARE_MODEL', '@cf/qwen/qwen3.8-27b');
         removeHubFact,
         clearScopeMemory,
       } from '../lib/projectMemory';
-      import { PROTOTYPE_TITLE, PROTOTYPE_TEXT, PROTOTYPE_EXTRA } from '../lib/prototypeNotice';
+      import { PROTOTYPE_TITLE, PROTOTYPE_TEXT, PROTOTYPE_EXTRA, PROTOTYPE_VERSION } from '../lib/prototypeNotice';
       import '../styles/global.css';
 
       const runtimeConfig = document.body.dataset;
@@ -1703,6 +1707,19 @@ Ne décris que l'image fournie. Ne produis pas de code ni d'actions JSON. Sois t
         const extra = Array.isArray(PROTOTYPE_EXTRA) ? PROTOTYPE_EXTRA.filter((l) => typeof l === 'string' && l.trim()) : [];
         if (titleEl) titleEl.textContent = PROTOTYPE_TITLE;
         if (textEl) textEl.textContent = [PROTOTYPE_TEXT, ...(extra.length ? ['', ...extra] : [])].join('\n');
+        // ✕ Retirer la notice : mémorisé (elle ne revient pas), sauf si la
+        // version du texte change (PROTOTYPE_VERSION) → elle réapparaît alors.
+        const CLOSED_KEY = 'gd4_proto_closed';
+        let closedVersion = '';
+        try { closedVersion = localStorage.getItem(CLOSED_KEY) || ''; } catch { /* ignore */ }
+        if (closedVersion === PROTOTYPE_VERSION) {
+          banner.classList.add('hidden');
+          return;
+        }
+        document.getElementById('prototypeBannerClose')?.addEventListener('click', () => {
+          try { localStorage.setItem(CLOSED_KEY, PROTOTYPE_VERSION); } catch { /* ignore */ }
+          banner.classList.add('hidden');
+        });
         const KEY = 'gd4_prototype_open';
         const apply = (open: boolean) => {
           body?.classList.toggle('hidden', !open);
