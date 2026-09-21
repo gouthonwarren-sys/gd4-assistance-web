@@ -1738,18 +1738,27 @@ Ne décris que l'image fournie. Ne produis pas de code ni d'actions JSON. Sois t
       })();
 
       // 🔊 Lire une réponse à voix haute (synthèse vocale) — nouveauté GD4
+      // setSpeakIcon : ne change QUE l'icône (1er span ou le bouton entier
+      // s'il n'a pas de span) — le libellé « Lire » du menu ⋮ reste intact.
+      function setSpeakIcon(btn: HTMLButtonElement, icon: string) {
+        const ico = (btn.querySelector('span') as HTMLElement | null) || btn;
+        ico.textContent = icon;
+      }
       document.addEventListener('click', (e) => {
         const speakBtn = (e.target as HTMLElement).closest<HTMLButtonElement>('.speak-btn');
         if (!speakBtn) return;
-        const bubble = speakBtn.closest('div')?.parentElement?.querySelector('.message-content') as HTMLElement | null;
+        // Barre d'outils (bulle IA) : remonter à la bulle complète ;
+        // menu ⋮ (bulle utilisateur) : remonter au conteneur du menu.
+        const msgDiv = speakBtn.closest('.relative.group') || speakBtn.closest('div')?.parentElement;
+        const bubble = msgDiv?.querySelector('.message-content') as HTMLElement | null;
         const text = bubble?.textContent || '';
         if (!text) return;
         try {
-          if (speechSynthesis.speaking) { speechSynthesis.cancel(); speakBtn.textContent = '🔊'; return; }
+          if (speechSynthesis.speaking) { speechSynthesis.cancel(); setSpeakIcon(speakBtn, '🔊'); return; }
           const utterance = new SpeechSynthesisUtterance(text);
           utterance.lang = 'fr-FR';
-          utterance.onend = () => { speakBtn.textContent = '🔊'; };
-          speakBtn.textContent = '⏹';
+          utterance.onend = () => { setSpeakIcon(speakBtn, '🔊'); };
+          setSpeakIcon(speakBtn, '⏹');
           speechSynthesis.speak(utterance);
         } catch { /* ignore */ }
       });
@@ -2072,15 +2081,20 @@ Ne décris que l'image fournie. Ne produis pas de code ni d'actions JSON. Sois t
 
               <button type="button" class="dislike-btn hover:text-rose-400 p-1.5 rounded-lg hover:bg-slate-800 transition cursor-pointer text-sm leading-none" title="Mauvaise réponse">👎</button>
 
-              <button type="button" class="fav-btn hover:text-amber-300 p-1.5 rounded-lg hover:bg-slate-800 transition cursor-pointer text-sm leading-none" title="⭐ Ajouter aux favoris">⭐</button>
-
-              <button type="button" class="retry-btn hover:text-violet-300 p-1.5 rounded-lg hover:bg-slate-800 transition cursor-pointer text-sm leading-none" title="🔁 Relancer la réponse (regénère à partir de cette question)">🔁</button>
-              <button type="button" class="msg-export-btn hover:text-cyan-300 p-1.5 rounded-lg hover:bg-slate-800 transition cursor-pointer text-sm leading-none" title="⬇️ Exporter ce message seul en texte (.txt)">⬇️</button>
-              <button type="button" class="quote-btn hover:text-emerald-300 p-1.5 rounded-lg hover:bg-slate-800 transition cursor-pointer text-sm leading-none" title="💬 Citer ce message dans la zone de saisie">💬</button>
-
-              <button type="button" class="pin-resp-btn hover:text-amber-300 p-1.5 rounded-lg hover:bg-slate-800 transition cursor-pointer" title="📌 Ajouter cette réponse aux points importants du dossier">📌</button>
-              <button type="button" class="trash-resp-btn hover:text-rose-300 p-1.5 rounded-lg hover:bg-slate-800 transition cursor-pointer" title="🗑 Retirer cette réponse de l'affichage">🗑</button>
               <span class="msg-meta ml-auto text-[10px] text-slate-500 whitespace-nowrap pl-1.5">${metaChars} · ${metaMins}</span>
+
+              <div class="msg-menu-wrap relative flex-none">
+                <button type="button" class="msg-more-btn p-1.5 rounded-lg hover:bg-slate-800 transition cursor-pointer text-base leading-none tracking-widest" title="Plus d'actions">⋮</button>
+                <div class="msg-menu hidden absolute right-0 bottom-full mb-1 w-48 bg-[#1b1e24] border border-slate-700 rounded-xl shadow-2xl py-1 z-30 text-[11px]">
+                  <button type="button" class="quote-btn w-full text-left px-3 py-1.5 hover:bg-slate-800 text-slate-300 flex items-center gap-2 cursor-pointer" title="💬 Citer ce message dans la zone de saisie"><span>💬</span> Citer</button>
+                  <button type="button" class="retry-btn w-full text-left px-3 py-1.5 hover:bg-slate-800 text-slate-300 flex items-center gap-2 cursor-pointer" title="🔁 Relancer la réponse (regénère à partir de cette question)"><span>🔁</span> Relancer</button>
+                  <button type="button" class="pin-resp-btn w-full text-left px-3 py-1.5 hover:bg-slate-800 text-slate-300 flex items-center gap-2 cursor-pointer" title="📌 Ajouter cette réponse aux points importants du dossier"><span class="pin-ico">📌</span> Mémoriser</button>
+                  <button type="button" class="fav-btn w-full text-left px-3 py-1.5 hover:bg-slate-800 text-slate-300 flex items-center gap-2 cursor-pointer" title="⭐ Ajouter aux favoris"><span class="fav-ico">⭐</span> Favori</button>
+                  <button type="button" class="msg-export-btn w-full text-left px-3 py-1.5 hover:bg-slate-800 text-slate-300 flex items-center gap-2 cursor-pointer" title="⬇️ Exporter ce message seul en texte (.txt)"><span>⬇️</span> Exporter .txt</button>
+                  <div class="my-1 border-t border-slate-800"></div>
+                  <button type="button" class="trash-resp-btn w-full text-left px-3 py-1.5 hover:bg-slate-800 text-rose-300 flex items-center gap-2 cursor-pointer" title="🗑 Retirer cette réponse de l'affichage"><span>🗑</span> Retirer</button>
+                </div>
+              </div>
             </div>
           `;
         } else {
@@ -2093,6 +2107,8 @@ Ne décris que l'image fournie. Ne produis pas de code ni d'actions JSON. Sois t
             <div class="message-content whitespace-pre-wrap font-sans">${text}</div>
 
             <div class="flex items-center gap-1.5 pt-2 mt-2 border-t border-cyan-800/40 text-cyan-400/80 justify-end">
+              <span class="msg-meta text-[10px] text-cyan-400/60 whitespace-nowrap pr-1.5">${metaChars} · ${metaMins}</span>
+
               <button type="button" class="edit-btn hover:text-cyan-200 p-1 rounded-lg hover:bg-cyan-900/40 transition flex items-center gap-1 cursor-pointer" title="Modifier le prompt">
                 ✏️
                 <span class="text-[10px]">Modifier</span>
@@ -2102,20 +2118,28 @@ Ne décris que l'image fournie. Ne produis pas de code ni d'actions JSON. Sois t
                 📋
               </button>
 
-              <button type="button" class="pin-btn hover:text-amber-300 p-1 rounded-lg hover:bg-cyan-900/40 transition cursor-pointer" title="📌 Ajouter ce prompt aux points importants du dossier">📌</button>
-              <button type="button" class="trash-btn hover:text-rose-300 p-1 rounded-lg hover:bg-cyan-900/40 transition cursor-pointer" title="🗑 Retirer ce message de l'affichage">🗑</button>
-              <button type="button" class="speak-btn hover:text-cyan-200 p-1 rounded-lg hover:bg-cyan-900/40 transition cursor-pointer" title="🔊 Lire ce prompt à voix haute">🔊</button>
-              <button type="button" class="fav-btn hover:text-amber-300 p-1 rounded-lg hover:bg-cyan-900/40 transition cursor-pointer" title="⭐ Ajouter aux favoris">⭐</button>
-              <button type="button" class="retry-btn hover:text-cyan-200 p-1 rounded-lg hover:bg-cyan-900/40 transition cursor-pointer" title="🔁 Relancer la question">🔁</button>
-              <button type="button" class="msg-export-btn hover:text-cyan-200 p-1 rounded-lg hover:bg-cyan-900/40 transition cursor-pointer" title="⬇️ Exporter ce message seul en texte (.txt)">⬇️</button>
-              <button type="button" class="quote-btn hover:text-emerald-200 p-1 rounded-lg hover:bg-cyan-900/40 transition cursor-pointer" title="💬 Citer ce message dans la zone de saisie">💬</button>
-              <span class="msg-meta ml-auto text-[10px] text-cyan-400/60 whitespace-nowrap pl-1.5">${metaChars} · ${metaMins}</span>
+              <div class="msg-menu-wrap relative flex-none">
+                <button type="button" class="msg-more-btn p-1 rounded-lg hover:bg-cyan-900/40 transition cursor-pointer text-base leading-none tracking-widest" title="Plus d'actions">⋮</button>
+                <div class="msg-menu hidden absolute right-0 bottom-full mb-1 w-48 bg-[#1b1e24] border border-slate-700 rounded-xl shadow-2xl py-1 z-30 text-[11px]">
+                  <button type="button" class="quote-btn w-full text-left px-3 py-1.5 hover:bg-slate-800 text-slate-300 flex items-center gap-2 cursor-pointer" title="💬 Citer ce message dans la zone de saisie"><span>💬</span> Citer</button>
+                  <button type="button" class="retry-btn w-full text-left px-3 py-1.5 hover:bg-slate-800 text-slate-300 flex items-center gap-2 cursor-pointer" title="🔁 Relancer la question"><span>🔁</span> Relancer</button>
+                  <button type="button" class="speak-btn w-full text-left px-3 py-1.5 hover:bg-slate-800 text-slate-300 flex items-center gap-2 cursor-pointer" title="🔊 Lire ce prompt à voix haute"><span>🔊</span> Lire</button>
+                  <button type="button" class="pin-btn w-full text-left px-3 py-1.5 hover:bg-slate-800 text-slate-300 flex items-center gap-2 cursor-pointer" title="📌 Ajouter ce prompt aux points importants du dossier"><span class="pin-ico">📌</span> Mémoriser</button>
+                  <button type="button" class="fav-btn w-full text-left px-3 py-1.5 hover:bg-slate-800 text-slate-300 flex items-center gap-2 cursor-pointer" title="⭐ Ajouter aux favoris"><span class="fav-ico">⭐</span> Favori</button>
+                  <button type="button" class="msg-export-btn w-full text-left px-3 py-1.5 hover:bg-slate-800 text-slate-300 flex items-center gap-2 cursor-pointer" title="⬇️ Exporter ce message seul en texte (.txt)"><span>⬇️</span> Exporter .txt</button>
+                  <div class="my-1 border-t border-slate-800"></div>
+                  <button type="button" class="trash-btn w-full text-left px-3 py-1.5 hover:bg-slate-800 text-rose-300 flex items-center gap-2 cursor-pointer" title="🗑 Retirer ce message de l'affichage"><span>🗑</span> Retirer</button>
+                </div>
+              </div>
             </div>
           `;
         }
 
         const contentDiv = msgDiv.querySelector('.message-content');
-        const contentText = contentDiv?.textContent || '';
+        // ⚠️ Texte lu DYNAMIQUEMENT : les bulles du flux d'envoi sont créées
+        // vides puis remplies après coup — une valeur figée donnerait des clés
+        // vides pour 📌/⭐/👍/👎/⬇️ sur ces messages.
+        const msgText = () => (contentDiv?.textContent || '').trim();
         const copyBtn = msgDiv.querySelector('.copy-btn');
         const copyLabel = msgDiv.querySelector('.copy-label');
         const editBtn = msgDiv.querySelector('.edit-btn');
@@ -2143,7 +2167,7 @@ Ne décris que l'image fournie. Ne produis pas de code ni d'actions JSON. Sois t
           // 🧠 NOUVEAU : l'avis est mémorisé (comme le plugin) → survit au rechargement.
           try {
             const votes = JSON.parse(localStorage.getItem('gd4_msg_votes') || '{}') || {};
-            const key = (role === 'assistant' ? 'ai|' : 'user|') + contentText.slice(0, 200);
+            const key = (role === 'assistant' ? 'ai|' : 'user|') + msgText().slice(0, 200);
             if (likeBtn.classList.contains('text-emerald-400')) votes[key] = 'good';
             else delete votes[key];
             localStorage.setItem('gd4_msg_votes', JSON.stringify(votes));
@@ -2156,7 +2180,7 @@ Ne décris que l'image fournie. Ne produis pas de code ni d'actions JSON. Sois t
           // 🧠 NOUVEAU : l'avis est mémorisé (comme le plugin) → survit au rechargement.
           try {
             const votes = JSON.parse(localStorage.getItem('gd4_msg_votes') || '{}') || {};
-            const key = (role === 'assistant' ? 'ai|' : 'user|') + contentText.slice(0, 200);
+            const key = (role === 'assistant' ? 'ai|' : 'user|') + msgText().slice(0, 200);
             if (dislikeBtn.classList.contains('text-rose-400')) votes[key] = 'bad';
             else delete votes[key];
             localStorage.setItem('gd4_msg_votes', JSON.stringify(votes));
@@ -2166,10 +2190,36 @@ Ne décris que l'image fournie. Ne produis pas de code ni d'actions JSON. Sois t
         // 🧠 Restaure l'avis mémorisé (parité plugin : 👍/👎 persistants).
         try {
           const votes = JSON.parse(localStorage.getItem('gd4_msg_votes') || '{}') || {};
-          const key = (role === 'assistant' ? 'ai|' : 'user|') + contentText.slice(0, 200);
+          const key = (role === 'assistant' ? 'ai|' : 'user|') + msgText().slice(0, 200);
           if (votes[key] === 'good') likeBtn?.classList.add('text-emerald-400');
           if (votes[key] === 'bad') dislikeBtn?.classList.add('text-rose-400');
         } catch { /* ignore */ }
+
+        // ---- ⋮ Menu « plus d'actions » (barre épurée) : un clic ouvre, ----
+        // un clic extérieur ou une action ferme. Comme le plugin.
+        const menuWrap = msgDiv.querySelector('.msg-menu-wrap');
+        const menuEl = msgDiv.querySelector('.msg-menu');
+        msgDiv.querySelector('.msg-more-btn')?.addEventListener('click', (e) => {
+          e.stopPropagation();
+          // Un seul menu ouvert à la fois : on referme les autres bulles.
+          document.querySelectorAll('.msg-menu').forEach((m) => { if (m !== menuEl) m.classList.add('hidden'); });
+          menuEl?.classList.toggle('hidden');
+        });
+        // Toute action choisie dans le menu referme le menu.
+        menuEl?.addEventListener('click', (e) => {
+          if ((e.target as HTMLElement)?.closest('.msg-menu')) menuEl.classList.add('hidden');
+          e.stopPropagation();
+        });
+        // Fermeture au clic extérieur : un SEUL écouteur global pour toutes
+        // les bulles (évite d'empiler un listener par message).
+        const w = window as any;
+        if (!w.__gd4MsgMenusBound) {
+          w.__gd4MsgMenusBound = true;
+          document.addEventListener('click', () => {
+            document.querySelectorAll('.msg-menu').forEach((m) => m.classList.add('hidden'));
+          });
+        }
+        if (menuWrap) menuWrap.dataset.menuBound = '1';
 
         // ---- 🔁 Relancer la réponse (NOUVEAU) : recharge la question dans ----
         // la saisie et renvoie. Sur une bulle IA → la question précédente ;
@@ -2177,7 +2227,7 @@ Ne décris que l'image fournie. Ne produis pas de code ni d'actions JSON. Sois t
         msgDiv.querySelector('.retry-btn')?.addEventListener('click', () => {
           let question = '';
           if (role === 'user') {
-            question = contentText;
+            question = msgText();
           } else if (msgDiv.previousElementSibling) {
             question = msgDiv.previousElementSibling.querySelector('.message-content')?.textContent || '';
           }
@@ -2190,8 +2240,8 @@ Ne décris que l'image fournie. Ne produis pas de code ni d'actions JSON. Sois t
         // ---- 💬 Citer (parité plugin) : recharge le texte cité dans la ----
         // saisie (format « > … ») pour poser une question dessus.
         msgDiv.querySelector('.quote-btn')?.addEventListener('click', () => {
-          if (!promptInput || !contentText.trim()) return;
-          const quoted = contentText.split('\n').map((l) => '> ' + l).join('\n') + '\n\n';
+          if (!promptInput || !msgText()) return;
+          const quoted = msgText().split('\n').map((l) => '> ' + l).join('\n') + '\n\n';
           promptInput.value = quoted;
           promptInput.focus();
         });
@@ -2199,16 +2249,17 @@ Ne décris que l'image fournie. Ne produis pas de code ni d'actions JSON. Sois t
         // ---- ⬇️ Exporter ce message seul en .txt (NOUVEAU) ----
         msgDiv.querySelector('.msg-export-btn')?.addEventListener('click', (e) => {
           const who = role === 'assistant' ? 'Assistant IA' : 'Développeur';
-          const blob = new Blob([`${who} — ${fullDate}\n\n${contentText}`], { type: 'text/plain;charset=utf-8' });
+          const blob = new Blob([`${who} — ${fullDate}\n\n${msgText()}`], { type: 'text/plain;charset=utf-8' });
           const a = document.createElement('a');
           a.href = URL.createObjectURL(blob);
           a.download = `gd4-message-${Date.now()}.txt`;
           a.click();
           setTimeout(() => URL.revokeObjectURL(a.href), 2000);
           const btn = e.currentTarget as HTMLElement;
-          const old = btn.textContent;
-          btn.textContent = '✅';
-          setTimeout(() => { btn.textContent = old; }, 1200);
+          const ico = btn.querySelector('span') || btn;
+          const old = ico.textContent;
+          (ico as HTMLElement).textContent = '✅';
+          setTimeout(() => { (ico as HTMLElement).textContent = old; }, 1200);
         });
 
         // ---- 🗑 Suppression d'un message (affichage + stockage) ----
@@ -2233,11 +2284,15 @@ Ne décris que l'image fournie. Ne produis pas de code ni d'actions JSON. Sois t
 
         // ---- 📌 « Mémoriser » (parité plugin) : ajoute le contenu au ----
         // centre de données du dossier courant, sans passer par l'IA.
+        // Le retour visuel ✅ ne touche QUE l'icône (le libellé reste intact).
         function pinThisMessage(btn: Element | null) {
-          if (!btn || !contentText.trim()) return;
-          addHubFact(currentUserId, currentMemoryScope().scopeKey, contentText.trim());
-          (btn as HTMLElement).textContent = '✅';
-          setTimeout(() => { (btn as HTMLElement).textContent = '📌'; }, 1500);
+          if (!btn) return;
+          const t = msgText();
+          if (!t) return;
+          addHubFact(currentUserId, currentMemoryScope().scopeKey, t);
+          const ico = (btn as HTMLElement).querySelector('.pin-ico') || (btn as HTMLElement);
+          (ico as HTMLElement).textContent = '✅';
+          setTimeout(() => { (ico as HTMLElement).textContent = '📌'; }, 1500);
         }
         msgDiv.querySelector('.pin-btn')?.addEventListener('click', (e) => pinThisMessage(e.currentTarget as Element));
         msgDiv.querySelector('.pin-resp-btn')?.addEventListener('click', (e) => pinThisMessage(e.currentTarget as Element));
@@ -2245,11 +2300,14 @@ Ne décris que l'image fournie. Ne produis pas de code ni d'actions JSON. Sois t
         // ---- ⭐ Favoris (NOUVEAU, parité plugin) : mémorisé localement, ----
         // survit au rechargement. Même clé que les avis → réaffiché en 🌟 plein.
         const msgFavBtn = msgDiv.querySelector('.fav-btn') as HTMLElement | null;
-        const msgFavKeyOf = () => (role === 'assistant' ? 'fav|ai|' : 'fav|user|') + contentText.slice(0, 200);
+        const msgFavKeyOf = () => (role === 'assistant' ? 'fav|ai|' : 'fav|user|') + msgText().slice(0, 200);
         const paintMsgFav = (on: boolean) => {
-          if (!msgFavBtn) return;
-          msgFavBtn.textContent = on ? '🌟' : '⭐';
-          msgFavBtn.classList.toggle('text-amber-300', on);
+          // Le retour visuel ne touche QUE l'icône (.fav-ico) : le libellé
+          // « Favori » du bouton du menu ⋮ doit rester intact.
+          const ico = (msgFavBtn?.querySelector('.fav-ico') as HTMLElement | null) || msgFavBtn;
+          if (!ico) return;
+          ico.textContent = on ? '🌟' : '⭐';
+          msgFavBtn?.classList.toggle('text-amber-300', on);
         };
         try {
           const favs = JSON.parse(localStorage.getItem('gd4_msg_favs') || '{}') || {};
@@ -2260,7 +2318,7 @@ Ne décris que l'image fournie. Ne produis pas de code ni d'actions JSON. Sois t
             const favs = JSON.parse(localStorage.getItem('gd4_msg_favs') || '{}') || {};
             const key = msgFavKeyOf();
             if (favs[key]) { delete favs[key]; paintMsgFav(false); }
-            else { favs[key] = { text: contentText.slice(0, 1500), at: Date.now() }; paintMsgFav(true); }
+            else { favs[key] = { text: msgText().slice(0, 1500), at: Date.now() }; paintMsgFav(true); }
             localStorage.setItem('gd4_msg_favs', JSON.stringify(favs));
           } catch { /* stockage indisponible */ }
         });
