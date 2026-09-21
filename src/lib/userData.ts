@@ -26,6 +26,8 @@ export interface ChatMessage {
   role: 'user' | 'assistant';
   text: string;
   modelName?: string;
+  /** Horodatage (epoch ms) — affiché comme l'heure dans le plugin. Optionnel (anciens messages). */
+  createdAt?: number;
 }
 
 export interface Chat {
