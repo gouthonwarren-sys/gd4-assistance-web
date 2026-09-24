@@ -20,6 +20,13 @@ pnpm-debug.log*
 .env.production
 !.env.example
 
+# 🔐 secret : jamais dans le dépôt (Netlify → dashboard uniquement)
+netlify.env
+NETLIFY_VARS.txt
+*.bak
+*.env.bak
+_gd4_env*
+
 # fichiers de travail local (checks, tests, temporaires)
 check_*.txt
 test_*.txt
