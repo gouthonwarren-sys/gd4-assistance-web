@@ -27,8 +27,8 @@
 
       <div class="p-3 bg-[#16181c] rounded-xl border border-slate-800">
         <p class="font-semibold text-slate-100 mb-1.5">③ Lancer le relais local</p>
-        <p>Il faut <b>Python 3.10 ou plus</b> (une seule fois). Dans le dossier <code class="text-cyan-300">gd4-assistance-plugin</code> extrait du ZIP, double-clique sur <code class="text-cyan-300">lancer_relais.bat</code> (Windows). Au premier lancement il installe tout seul les dépendances (<code>fastapi</code>, <code>uvicorn</code>, <code>httpx</code>) puis démarre le relais et ouvre la console <code class="text-cyan-300">http://127.0.0.1:9091/</code>. C'est ce relais qui fait le pont entre Godot et l'application : laisse la fenêtre noire ouverte pendant ta session.</p>
-        <p class="mt-1.5 text-slate-400">Sur macOS / Linux : dans un terminal, <code>pip install -r requirements.txt</code> puis <code>python server.py</code>.</p>
+        <p>Il faut <b>Python 3.10 ou plus</b> (une seule fois). Dans le dossier <code class="text-cyan-300">gd4-assistance-plugin</code> extrait du ZIP, double-clique sur <code class="text-cyan-300">lancer_relais.bat</code> (Windows). Au premier lancement il installe tout seul les dépendances (<code>fastapi</code>, <code>uvicorn</code>, <code>httpx</code>) puis démarre le relais sur le port <b>9091</b> et ouvre la console <code class="text-cyan-300">http://127.0.0.1:9091/</code>. C'est ce relais qui fait le pont entre Godot et l'application : laisse la fenêtre noire ouverte pendant ta session.</p>
+        <p class="mt-1.5 text-slate-400">Sur macOS / Linux : dans un terminal, <code>pip install -r requirements.txt</code> puis <code>python server.py</code>. Si le port 9091 est déjà utilisé, lance <code class="text-cyan-300">lancer_relais.bat 9092</code> (ou <code>python server.py 9092</code>) et reporte ce port dans l'app + dans les réglages du projet (étape ⑤).</p>
       </div>
 
       <div class="p-3 bg-[#16181c] rounded-xl border border-slate-800">
@@ -43,7 +43,7 @@
           <li><code class="text-cyan-300">gd4_assistance/network/port</code> — type <b>int</b>, valeur <b>9091</b> (le port du relais local).</li>
           <li><code class="text-cyan-300">gd4_assistance/network/pairing_code</code> — type <b>String</b>, valeur <b>GD4-XXXX</b> (le code de ton compte).</li>
         </ul>
-        <p class="mt-1.5 text-slate-400">💡 Ces deux réglages sont créés automatiquement par le dock au premier démarrage (9091 et <code>123456</code> par défaut) : si tu ne les vois pas encore, lance Godot une fois avec l'extension activée. Modifie le port ici seulement si le 9091 est déjà pris sur ta machine — il faut alors le même port dans l'app (champ « Port du relais local » en bas de cet onglet).</p>
+        <p class="mt-1.5 text-slate-400">💡 Ces deux réglages sont créés automatiquement par le dock au premier démarrage (9091 et <code>123456</code> par défaut) : si tu ne les vois pas encore, lance Godot une fois avec l'extension activée. Si le port 9091 est déjà pris sur ta machine : lance le relais avec <code class="text-cyan-300">lancer_relais.bat 9092</code>, puis mets <b>9092</b> ici (réglage du projet) et dans le champ « Port du relais local » en bas de cet onglet.</p>
       </div>
     </div>
 
