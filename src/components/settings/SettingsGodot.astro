@@ -3,9 +3,60 @@
 <section id="tab-godot" class="tab-content space-y-6 hidden">
   <div class="pb-4 border-b border-slate-800">
     <h2 class="text-xl font-semibold text-white">Plugin Godot 4</h2>
-    <p class="text-xs text-slate-400 mt-1">Génère un code d'appairage, donne-le à l'utilisateur : il le colle dans le dock du plugin sous Godot pour relier son éditeur à ton app.</p>
+    <p class="text-xs text-slate-400 mt-1">Connecte ton éditeur Godot à GD4 Assistant : installe l'addon, appaire-le avec ton compte, et l'IA pourra créer des nœuds et des scripts directement dans ta scène.</p>
   </div>
 
+  <!-- ================= GUIDE D'INSTALLATION ================= -->
+  <div class="p-5 bg-[#111316] rounded-2xl border border-slate-800/80 space-y-4">
+    <div class="flex items-center justify-between">
+      <h3 class="text-sm font-semibold text-slate-200">📘 Connecter Godot en 5 étapes</h3>
+      <button id="toggleInstallGuide" type="button" class="text-[11px] text-cyan-400 hover:text-cyan-300 cursor-pointer">Masquer le guide</button>
+    </div>
+
+    <div id="installGuideBody" class="space-y-3 text-xs text-slate-300 leading-relaxed">
+      <div class="p-3 bg-[#16181c] rounded-xl border border-slate-800">
+        <p class="font-semibold text-slate-100 mb-1.5">① Télécharger et installer l'addon</p>
+        <p>Clique sur le bouton ci-dessous, puis décompresse le fichier ZIP. Tu obtiens un dossier <code class="text-cyan-300">gd4-assistance-plugin</code> : copie le dossier <code class="text-cyan-300">addons</code> qu'il contient dans <b>la racine de ton projet Godot</b> (le même dossier que ton <code class="text-cyan-300">project.godot</code>).</p>
+      </div>
+
+      <div class="p-3 bg-[#16181c] rounded-xl border border-slate-800">
+        <p class="font-semibold text-slate-100 mb-1.5">② Activer l'extension dans Godot</p>
+        <p>Dans Godot : menu <b>Projet → Paramètres du projet</b> → onglet <b>Plugins</b> → coche la case <b>Activé</b> en face de <b>GD4 Assistant</b>. Si Godot propose de redémarrer, accepte. Le dock <b>GD4 Assistant</b> apparaît alors en bas de l'éditeur (à côté de Sortie / Débogueur).</p>
+        <p class="mt-1.5 text-slate-400">⚠️ Ne renomme pas le dossier <code class="text-cyan-300">addons/gd4_assistance</code> : Godot retrouve l'extension par ce chemin exact.</p>
+      </div>
+
+      <div class="p-3 bg-[#16181c] rounded-xl border border-slate-800">
+        <p class="font-semibold text-slate-100 mb-1.5">③ Lancer le relais local</p>
+        <p>Il faut <b>Python 3.10 ou plus</b> (une seule fois). Dans le dossier <code class="text-cyan-300">gd4-assistance-plugin</code> extrait du ZIP, double-clique sur <code class="text-cyan-300">lancer_relais.bat</code> (Windows). Au premier lancement il installe tout seul les dépendances (<code>fastapi</code>, <code>uvicorn</code>, <code>httpx</code>) puis démarre le relais et ouvre la console <code class="text-cyan-300">http://127.0.0.1:9091/</code>. C'est ce relais qui fait le pont entre Godot et l'application : laisse la fenêtre noire ouverte pendant ta session.</p>
+        <p class="mt-1.5 text-slate-400">Sur macOS / Linux : dans un terminal, <code>pip install -r requirements.txt</code> puis <code>python server.py</code>.</p>
+      </div>
+
+      <div class="p-3 bg-[#16181c] rounded-xl border border-slate-800">
+        <p class="font-semibold text-slate-100 mb-1.5">④ Appairer avec TON code (affiché à droite de ce guide)</p>
+        <p>Ouvre le dock <b>GD4 Assistant</b> (en bas de Godot) : un champ <b>code d'appairage</b> s'y trouve. Colle le code <b>GD4-XXXX</b> affiché juste en dessous dans la section « Code d'appairage du compte », puis clique <b>🔗 Connecter</b>. La pastille passe au <b>vert</b> et affiche « Connecté » : c'est bon, l'IA peut agir dans ta scène. (En collant le code, le dock l'enregistre lui-même dans les réglages du projet — rien d'autre à faire.)</p>
+      </div>
+
+      <div class="p-3 bg-[#16181c] rounded-xl border border-slate-800">
+        <p class="font-semibold text-slate-100 mb-1.5">⑤ Réglages du projet (port + code) — méthode manuelle, si tu préfères</p>
+        <p>Dans Godot : <b>Projet → Paramètres du projet</b>, active le bouton <b>« Paramètres avancés »</b> (en haut à droite de la fenêtre), puis cherche <code class="text-cyan-300">gd4_assistance</code> dans la catégorie <b>Général</b>. Tu y trouves les deux réglages utilisés par le dock :</p>
+        <ul class="mt-1.5 ml-4 list-disc space-y-1">
+          <li><code class="text-cyan-300">gd4_assistance/network/port</code> — type <b>int</b>, valeur <b>9091</b> (le port du relais local).</li>
+          <li><code class="text-cyan-300">gd4_assistance/network/pairing_code</code> — type <b>String</b>, valeur <b>GD4-XXXX</b> (le code de ton compte).</li>
+        </ul>
+        <p class="mt-1.5 text-slate-400">💡 Ces deux réglages sont créés automatiquement par le dock au premier démarrage (9091 et <code>123456</code> par défaut) : si tu ne les vois pas encore, lance Godot une fois avec l'extension activée. Modifie le port ici seulement si le 9091 est déjà pris sur ta machine — il faut alors le même port dans l'app (champ « Port du relais local » en bas de cet onglet).</p>
+      </div>
+    </div>
+
+    <div class="flex flex-wrap items-center gap-3 pt-2">
+      <a id="downloadAddonBtn" href="/addons/gd4-assistant-addon.zip" download="gd4-assistant-addon.zip"
+         class="inline-flex items-center gap-2 bg-gradient-to-r from-orange-600 to-amber-600 hover:from-orange-500 hover:to-amber-500 text-white text-sm font-semibold px-5 py-2.5 rounded-xl transition shadow-lg">
+        ⬇️ Télécharger l'addon (.zip)
+      </a>
+      <span class="text-[11px] text-slate-500">Contient : <code>addons/gd4_assistance</code> (le dock Godot), le relais local (<code>server.py</code>, <code>lancer_relais.bat</code>) et un <code>LISEZMOI.txt</code> avec ces 5 étapes.</span>
+    </div>
+  </div>
+
+  <!-- ================= CODE D'APPAIRAGE ================= -->
   <div class="p-5 bg-[#111316] rounded-2xl border border-slate-800/80 space-y-4">
     <div class="flex items-center justify-between">
       <span class="text-xs font-semibold text-slate-400 uppercase tracking-wider">Code d'appairage du compte</span>
@@ -32,7 +83,7 @@
     </p>
 
     <p class="text-xs text-slate-500">
-      📋 Donne ce code à l'utilisateur. Dans Godot : dock <b>GD4 Assistant</b> → colle le code → <b>🔗 Connecter</b>.
+      📋 Copie ce code et colle-le dans le champ du dock <b>GD4 Assistant</b> dans Godot (étape ④ ci-dessus), puis clique <b>🔗 Connecter</b>.
     </p>
     <p class="text-[10px] text-slate-600">Code lié au compte : <span id="codeOwnerDisplay" class="text-slate-400">—</span></p>
   </div>
@@ -71,6 +122,23 @@
   if (portInput && Number.isInteger(savedPort) && savedPort >= 1 && savedPort <= 65535) {
     portInput.value = String(savedPort);
   }
+
+  // Guide d'installation : repliable (état mémorisé en local, pas synchronisé au compte)
+  const GUIDE_HIDDEN_KEY = 'gd4_install_guide_hidden';
+  const guideBody = document.getElementById('installGuideBody');
+  const guideToggleBtn = document.getElementById('toggleInstallGuide');
+  function applyGuideState(hidden: boolean) {
+    if (guideBody) guideBody.classList.toggle('hidden', hidden);
+    if (guideToggleBtn) guideToggleBtn.textContent = hidden ? 'Afficher le guide' : 'Masquer le guide';
+  }
+  try {
+    applyGuideState(localStorage.getItem(GUIDE_HIDDEN_KEY) === '1');
+  } catch (_) { /* localStorage indisponible : guide ouvert par défaut */ }
+  guideToggleBtn?.addEventListener('click', () => {
+    const hidden = !guideBody?.classList.contains('hidden');
+    applyGuideState(hidden);
+    try { localStorage.setItem(GUIDE_HIDDEN_KEY, hidden ? '1' : '0'); } catch (_) {}
+  });
 
   function sleep(ms: number) {
     return new Promise((r) => setTimeout(r, ms));
