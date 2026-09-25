@@ -36,6 +36,11 @@ build_err.txt
 npm_*.txt
 _gd4_*
 
+# Python (relais local) - fichiers compiles
+__pycache__/
+*.pyc
+*.pyo
+
 # macOS-specific files
 .DS_Store
 
