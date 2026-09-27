@@ -1,7 +1,7 @@
 <section class="pricing-section" id="tarifs">
     <div class="container">
-        <h2>🚀 Preview gratuite</h2>
-        <p class="subtitle">Pendant la preview, tout est offert : modèle Qwen 3.8 27B, codes promo et quotas généreux.</p>
+        <h2>🎉 Gratuit</h2>
+        <p class="subtitle">Tout est offert : modèle Qwen 3.8 27B, codes promo et quotas généreux.</p>
 
         <!-- ═══════════ CODE PROMO (partie ABONNEMENT) ═══════════ -->
         <!-- Le champ où on écrit le code est ICI, dans la partie abonnement. -->
@@ -21,11 +21,11 @@
         </div>
 
         <div class="pricing-grid">
-            <!-- Plan gratuit Preview — toute l'app est offerte pendant la preview -->
+            <!-- Plan gratuit — toute l'app est offerte -->
             <div class="price-card featured">
-                <div class="popular-tag">🚀 Preview gratuite</div>
-                <h3>Preview — 100 % gratuit</h3>
-                <div class="price">0 € <span>pour toujours en preview</span></div>
+                <div class="popular-tag">🎉 Gratuit</div>
+                <h3>Gratuit — 100 % des fonctionnalités</h3>
+                <div class="price">0 € <span>pendant le lancement</span></div>
                 <div class="factor-badge active">Tout illimité</div>
 
                 <div class="collapsible-content collapsed">
@@ -40,7 +40,7 @@
                         <li>Volume de calcul : quota de base réinitialisé toutes les 8h à 00:00, 08:00 et 16:00 UTC.</li>
                         <li>Accès illimité aux fonctionnalités du plugin Godot 4</li>
                         <li>👥 Public Cible & Cas d'Usage</li>
-                        <li>Étudiants et développeurs créant leur jeu Godot 4 pendant la preview.</li>
+                        <li>Étudiants et développeurs créant leur jeu Godot 4.</li>
                         <li>Développeurs souhaitant générer, analyser et corriger du GDScript sans payer.</li>
                     </ul>
                 </div>
@@ -70,8 +70,8 @@
                 <button class="plan-btn secondary" data-focus-promo>Utiliser un code</button>
             </div>
 
-            <!-- Tous les abonnements sont désactivés pendant la preview : tout est gratuit. -->
-            <!-- Les plans payants seront réactivés après la preview. -->
+            <!-- Tous les abonnements sont désactivés pour l'instant : tout est gratuit. -->
+            <!-- Les plans payants seront activés plus tard. -->
 
         </div>
     </div>
@@ -114,7 +114,7 @@
             seatInput.addEventListener('change', updateEnterprisePrice);
         }
 
-        // Boutons des cartes preview gratuites : aucune souscription.
+        // Boutons de la carte gratuite : aucune souscription.
         document.querySelectorAll('[data-scroll-chat]').forEach((btn) => {
             btn.addEventListener('click', () => {
                 const input = document.getElementById('promptInput');
