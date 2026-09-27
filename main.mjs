@@ -7,7 +7,7 @@ import { app, BrowserWindow } from 'electron';
 // En PRODUCTION → l'URL du site en ligne (à REMPLIR ci-dessous
 //                 une fois le site déployé, ex. https://gd4.netlify.app)
 // ============================================================
-const PROD_URL = 'https://REMPLACE-MOI-APRES-DEPLOIEMENT.example'; // ← à remplacer
+const PROD_URL = 'https://gd4-assistant.netlify.app'; // ✅ site en production (25/09/2026)
 
 function createWindow() {
   const win = new BrowserWindow({

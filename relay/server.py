@@ -55,7 +55,17 @@ app.add_middleware(
     allow_origins=["*"], allow_methods=["*"], allow_headers=["*"],
 )
 
-ALLOWED_ORIGINS = {"127.0.0.1", "localhost"}
+# Origines autorisees pour le WebSocket : toute autre origine -> 403.
+#   - loopback : la console locale (127.0.0.1:9091) et l'app en dev (localhost:4321)
+#   - le site en production : l'app HTTPS doit pouvoir parler au relais local
+#     (sans cette ligne : « Relais hors ligne — impossible d'envoyer ta question »)
+# Surcharge : GD4_ALLOWED_ORIGINS="mon-site.netlify.app,autre-domaine.com"
+ALLOWED_ORIGINS = {
+    "127.0.0.1", "localhost",
+    "gd4-assistant.netlify.app",
+    "godot4assistant.netlify.app",
+    "gdassistant4.netlify.app",
+}
 ALLOWED_ORIGINS.update(
     h.strip() for h in os.environ.get("GD4_ALLOWED_ORIGINS", "").split(",") if h.strip()
 )
